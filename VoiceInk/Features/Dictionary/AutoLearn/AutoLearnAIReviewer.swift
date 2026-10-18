@@ -77,17 +77,6 @@ final class AutoLearnAIReviewer: @unchecked Sendable {
         self.enhancementService = enhancementService
     }
 
-    /// True when a review could run right now. Used to defer queued reviews
-    /// while providers are still starting up instead of recording a failure.
-    var hasAvailableProvider: Bool {
-        guard let aiService = enhancementService.getAIService() else { return false }
-        let connectedProviders = availableProviders(in: aiService)
-        if let selected = AutoLearnSettings.selectedProvider {
-            return connectedProviders.contains(selected)
-        }
-        return !connectedProviders.isEmpty
-    }
-
     func review(_ candidates: [AutoLearnReviewCandidate], batchID: UUID = UUID()) async throws -> AutoLearnReviewResult {
         try Task.checkCancellation()
         guard AutoLearnSettings.isAIReviewEnabled else { throw CancellationError() }

@@ -46,14 +46,12 @@ struct AutoLearnFieldSnapshot: Sendable {
 struct DetectedCorrectionCandidate: Hashable, Sendable {
     let originalText: String
     let correctedText: String
-    var languageCode: String? = nil
 }
 
 struct AutoLearnReviewCandidate: Sendable {
     let candidateID: UUID
     let originalText: String
     let correctedText: String
-    var languageCode: String? = nil
 }
 
 enum AutoLearnReviewAction: String, Codable, Sendable {
@@ -98,9 +96,6 @@ struct AutoLearnUnresolvedReview: Sendable {
 struct AutoLearnReviewResult: Sendable {
     let reviewDecisions: [AutoLearnReviewDecision]
     let unresolvedReviews: [AutoLearnUnresolvedReview]
-    /// Local name recognition is evidence of an entity, not evidence that a
-    /// global replacement is safe. These decisions always need user approval.
-    var approvalDecisions: [AutoLearnReviewDecision] = []
 }
 
 struct AutoLearnReviewProposal: Codable, Identifiable, Sendable {
@@ -169,21 +164,6 @@ struct AutoLearnAppliedCorrection: Sendable {
     let correctedVocabularyTerm: String
     let replacementSourceWasAdded: Bool
     let vocabularyCreationDate: Date?
-}
-
-enum AutoLearnReviewSchedule: String, CaseIterable, Identifiable {
-    case immediately
-    case manually
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .immediately: String(localized: "Immediately")
-        case .manually: String(localized: "Manually")
-        }
-    }
-
 }
 
 enum AutoLearnLimits {

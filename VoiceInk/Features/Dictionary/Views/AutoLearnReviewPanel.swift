@@ -23,7 +23,6 @@ struct AutoLearnReviewPanel: View {
     @State private var proposals: [AutoLearnReviewProposal] = []
     @State private var selections: [UUID: Set<ReviewComponent>] = [:]
     @State private var drafts: [UUID: ReviewDraft] = [:]
-    @State private var isReviewing = false
     @State private var isApplying = false
     @State private var errorMessage: String?
 
@@ -36,7 +35,7 @@ struct AutoLearnReviewPanel: View {
             footer
         }
         .task {
-            await loadAndReview()
+            await reloadProposals(selectNewItems: true)
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .autoLearnReviewProposalsDidChange)
@@ -47,7 +46,7 @@ struct AutoLearnReviewPanel: View {
 
     @ViewBuilder
     private var reviewContent: some View {
-        if proposals.isEmpty, !isReviewing {
+        if proposals.isEmpty {
             emptyState
         } else {
             reviewList
@@ -88,17 +87,6 @@ struct AutoLearnReviewPanel: View {
     private var reviewList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
-                if isReviewing {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Reviewing pending corrections…")
-                            .font(.system(size: 12))
-                            .foregroundStyle(AppTheme.Text.secondary)
-                    }
-                    .padding(.bottom, 2)
-                }
-
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.system(size: 11, weight: .medium))
@@ -145,7 +133,7 @@ struct AutoLearnReviewPanel: View {
         ContentUnavailableView {
             Label("No Corrections to Review", systemImage: "checkmark.circle")
         } description: {
-            Text(errorMessage ?? "New manual-review suggestions will appear here.")
+            Text(errorMessage ?? String(localized: "Suggestions appear after the dictation observation session ends."))
         }
         .padding(.top, 68)
         .padding(.bottom, 58)
@@ -159,15 +147,17 @@ struct AutoLearnReviewPanel: View {
                 AppActionButton("Dismiss All", kind: .destructive) {
                     dismiss(Set(proposals.map(\.id)))
                 }
-                .disabled(isApplying || isReviewing)
+                .disabled(isApplying)
 
                 Spacer()
 
                 AppActionButton(applyButtonTitle, kind: .primary) {
                     applySelections()
                 }
-                .disabled(selectedProposalCount == 0 || hasInvalidSelection || isApplying || isReviewing)
-                .help(firstValidationIssue ?? "Apply the selected corrections")
+                .disabled(selectedProposalCount == 0 || hasInvalidSelection || isApplying)
+                .help(hasInvalidSelection
+                    ? "Use different, nonempty values of up to three words."
+                    : "Apply the selected corrections")
             }
             .padding(.horizontal, 20)
             .frame(height: QuickPanelMetrics.footerHeight)
@@ -187,58 +177,14 @@ struct AutoLearnReviewPanel: View {
     }
 
     private var hasInvalidSelection: Bool {
-        firstValidationIssue != nil
-    }
-
-    private var firstValidationIssue: String? {
-        for proposal in proposals {
+        proposals.contains { proposal in
             let selected = selections[proposal.id] ?? []
-            guard !selected.isEmpty else { continue }
+            guard !selected.isEmpty else { return false }
             let draft = drafts[proposal.id] ?? ReviewDraft(proposal: proposal)
 
-            let correctedTerm = draft.correctedTerm.trimmingCharacters(in: .whitespacesAndNewlines)
-            if correctedTerm.isEmpty {
-                return String(localized: "The corrected value cannot be empty.")
-            }
-
-            if selected.contains(.replacement) {
-                let incorrectText = draft.incorrectText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if incorrectText.isEmpty {
-                    return String(localized: "The original value cannot be empty.")
-                }
-                if incorrectText.contains(",") {
-                    return String(localized: "A reviewed replacement can contain only one original value.")
-                }
-                if incorrectText.precomposedStringWithCanonicalMapping
-                    == correctedTerm.precomposedStringWithCanonicalMapping
-                {
-                    return String(localized: "The original and corrected values must be different.")
-                }
-            }
+            let source = selected.contains(.replacement) ? draft.incorrectText : nil
+            return !AutoLearnLocalReviewPolicy.accepts(source: source, destination: draft.correctedTerm)
         }
-        return nil
-    }
-
-    @MainActor
-    private func loadAndReview() async {
-        isReviewing = true
-        errorMessage = nil
-        await reloadProposals(selectNewItems: true)
-        await AutoLearnService.shared.preparePendingReviewForApproval()
-        await reloadProposals(selectNewItems: true)
-        isReviewing = false
-
-        let pendingResult = try? await AutoLearnService.shared.pendingReviewCount()
-        let pendingCount = pendingResult ?? 0
-        let loggedPendingCount = pendingResult.map { String($0) } ?? "unavailable"
-        if pendingCount > 0, errorMessage == nil {
-            errorMessage = String(
-                localized: AutoLearnSettings.isAIReviewEnabled
-                    ? "Some corrections could not be reviewed. Check the selected AI provider and try again."
-                    : "Some corrections could not be reviewed. Try again."
-            )
-        }
-        logger.notice("Auto Learn review panel ready proposals=\(self.proposals.count, privacy: .public) pendingCandidates=\(loggedPendingCount, privacy: .public) hasError=\(self.errorMessage != nil, privacy: .public)")
     }
 
     @MainActor

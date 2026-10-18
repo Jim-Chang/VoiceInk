@@ -10,12 +10,8 @@ struct DictionarySettingsPanel: View {
     @Environment(\.modelContext) private var modelContext
 
     let onDismiss: () -> Void
-    let onReviewNow: () -> Void
     @AppStorage(AutoLearnSettings.isEnabledKey) private var isAutoLearnDictionaryEnabled = true
-    @AppStorage(AutoLearnSettings.aiReviewEnabledKey) private var isAIReviewEnabled = true
-    @AppStorage(AutoLearnSettings.reviewScheduleKey)
-    private var reviewScheduleRawValue = AutoLearnReviewSchedule.immediately.rawValue
-    @State private var pendingCorrectionCount = 0
+    @AppStorage(AutoLearnSettings.aiReviewEnabledKey) private var isAIReviewEnabled = false
     @State private var pendingImport: DictionaryImportPayload?
     @State private var transferAlert: DictionaryTransferAlert?
 
@@ -40,51 +36,24 @@ struct DictionarySettingsPanel: View {
                         }
 
                     if isAutoLearnDictionaryEnabled {
-                        Toggle("AI Review", isOn: $isAIReviewEnabled)
-                            .onChange(of: isAIReviewEnabled) { _, _ in
-                                Task { await AutoLearnService.shared.reviewMethodDidChange() }
-                            }
+                        Picker("Review method", selection: $isAIReviewEnabled) {
+                            Text("Manual review").tag(false)
+                            Text("AI review").tag(true)
+                        }
+                        .onChange(of: isAIReviewEnabled) { _, _ in
+                            Task { await AutoLearnService.shared.reviewMethodDidChange() }
+                        }
 
                         if isAIReviewEnabled {
                             AutoLearnModelSelectionView()
+                            Text("AI review adds approved corrections automatically. If it fails, manual review asks for your approval.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         } else {
-                            Text("Uses on-device spelling and name recognition. Clear spelling corrections become word replacements; uncertain names require approval. Vocabulary is not added.")
+                            Text("Offers word replacements on your Mac. Add a suggestion to keep it, or dismiss it.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-
-                        LabeledContent {
-                            Picker("", selection: $reviewScheduleRawValue) {
-                                ForEach(AutoLearnReviewSchedule.allCases) { schedule in
-                                    Text(schedule.title).tag(schedule.rawValue)
-                                }
-                            }
-                            .labelsHidden()
-                            .onChange(of: reviewScheduleRawValue) { _, _ in
-                                Task {
-                                    await AutoLearnService.shared.reviewScheduleDidChange()
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("Review corrections")
-                                InfoTip(
-                                    isAIReviewEnabled
-                                        ? "Choose when saved corrections are sent to your AI provider. Manual review keeps them local until you select Review Now."
-                                        : "Choose when corrections are checked on your Mac. Manual review waits until you select Review Now. Uncertain names always require approval."
-                                )
-                            }
-                        }
-
-                        LabeledContent("Corrections to review") {
-                            Text("\(pendingCorrectionCount)")
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Button("Review Now") {
-                            onReviewNow()
-                        }
-                        .disabled(pendingCorrectionCount == 0)
                     }
                 } header: {
                     AutoLearnSectionHeader()
@@ -114,21 +83,6 @@ struct DictionarySettingsPanel: View {
             panelHeader
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .task {
-            await refreshPendingCorrectionCount()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .autoLearnQueueDidChange)) { _ in
-            Task {
-                await refreshPendingCorrectionCount()
-            }
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: .autoLearnReviewProposalsDidChange)
-        ) { _ in
-            Task {
-                await refreshPendingCorrectionCount()
-            }
-        }
         .sheet(item: $pendingImport) { payload in
             DictionaryImportPreviewSheet(
                 payload: payload,
@@ -168,13 +122,6 @@ struct DictionarySettingsPanel: View {
         }
         .padding(.horizontal, 20)
         .frame(height: QuickPanelMetrics.headerHeight)
-    }
-
-    @MainActor
-    private func refreshPendingCorrectionCount() async {
-        let pending = (try? await AutoLearnService.shared.outstandingReviewCount()) ?? 0
-        let proposals = (try? await AutoLearnService.shared.reviewProposalCount()) ?? 0
-        pendingCorrectionCount = pending + proposals
     }
 
     @MainActor

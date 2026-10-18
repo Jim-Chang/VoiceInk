@@ -191,8 +191,7 @@ struct AutoLearnModelSelectionView: View {
         guard retriesOnChange,
             isAutoLearnDictionaryEnabled,
             AutoLearnSettings.isAIReviewEnabled,
-            hasAutoLearnFailure,
-            AutoLearnSettings.reviewSchedule != .manually
+            hasAutoLearnFailure
         else { return }
         Task {
             await AutoLearnService.shared.retryPendingReviews()

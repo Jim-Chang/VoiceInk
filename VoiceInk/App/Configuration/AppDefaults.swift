@@ -31,7 +31,6 @@ enum AutoLearnSettings {
     static let failureMessageKey = "AutoLearnDictionaryFailureMessage"
     static let failureAcknowledgedKey = "AutoLearnDictionaryFailureAcknowledged"
     static let isAIReviewFailureKey = "AutoLearnDictionaryIsAIReviewFailure"
-    static let reviewScheduleKey = "AutoLearnDictionaryReviewSchedule"
 
     static var isEnabled: Bool {
         UserDefaults.standard.bool(forKey: isEnabledKey)
@@ -41,9 +40,8 @@ enum AutoLearnSettings {
         aiReviewEnabled(defaults: .standard)
     }
 
-    // Existing installations keep AI review until the user explicitly opts out.
     static func aiReviewEnabled(defaults: UserDefaults) -> Bool {
-        defaults.object(forKey: aiReviewEnabledKey) as? Bool ?? true
+        defaults.object(forKey: aiReviewEnabledKey) as? Bool ?? false
     }
 
     static var selectedProvider: AIProvider? {
@@ -57,11 +55,21 @@ enum AutoLearnSettings {
         return value?.isEmpty == false ? value : nil
     }
 
-    static var reviewSchedule: AutoLearnReviewSchedule {
-        guard let value = UserDefaults.standard.string(forKey: reviewScheduleKey) else {
-            return .immediately
+    /// Preserve existing review choices before registering the new local default.
+    static func migrateReviewMethod(defaults: UserDefaults = .standard) {
+        let legacyKey = "AutoLearnDictionaryReviewSchedule"
+        if defaults.object(forKey: aiReviewEnabledKey) == nil {
+            let hasExistingSettings = defaults.object(forKey: isEnabledKey) != nil
+                || defaults.object(forKey: providerKey) != nil
+                || defaults.object(forKey: modelKey) != nil
+                || defaults.bool(forKey: OnboardingSettings.preparedV2Key)
+                || defaults.bool(forKey: OnboardingSettings.completedV2Key)
+                || defaults.bool(forKey: "hasCompletedOnboarding")
+            let usesAIReview = defaults.string(forKey: legacyKey)
+                .map { $0 != "manually" } ?? hasExistingSettings
+            defaults.set(usesAIReview, forKey: aiReviewEnabledKey)
         }
-        return AutoLearnReviewSchedule(rawValue: value) ?? .immediately
+        defaults.removeObject(forKey: legacyKey)
     }
 
     /// Adopts the first configured enhancement provider for Auto Learn.
@@ -109,7 +117,7 @@ enum AutoLearnSettings {
             .filter { !$0.isEmpty }
             .joined(separator: " ")
         UserDefaults.standard.set(
-            message.isEmpty ? "The pending corrections could not be reviewed." : message,
+            message.isEmpty ? String(localized: "The pending corrections could not be reviewed.") : message,
             forKey: failureMessageKey
         )
         UserDefaults.standard.set(false, forKey: failureAcknowledgedKey)
@@ -136,6 +144,7 @@ enum OnboardingSettings {
 
 enum AppDefaults {
     static func registerDefaults() {
+        AutoLearnSettings.migrateReviewMethod()
         UserDefaults.standard.register(defaults: [
             // Onboarding & General
             OnboardingSettings.completedV2Key: false,
@@ -165,8 +174,7 @@ enum AppDefaults {
             RecorderDisplaySettingsKeys.showLiveTranscript: true,
             CloudTranscriptionSettings.timeoutKey: CloudTranscriptionSettings.defaultTimeout,
             AutoLearnSettings.isEnabledKey: true,
-            AutoLearnSettings.aiReviewEnabledKey: true,
-            AutoLearnSettings.reviewScheduleKey: AutoLearnReviewSchedule.immediately.rawValue,
+            AutoLearnSettings.aiReviewEnabledKey: false,
 
             // Cleanup
             CleanupSettingsKeys.isTranscriptionCleanupEnabled: false,

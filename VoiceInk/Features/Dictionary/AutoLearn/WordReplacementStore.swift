@@ -5,12 +5,20 @@ import SwiftData
 actor WordReplacementStore {
     private enum MutationError: Error { case invalidReplacementSource }
 
-    /// Read-only evidence for local review. Include approved replacement
-    /// destinations as well as vocabulary; local review never creates vocabulary.
-    func knownTerms() throws -> Set<String> {
-        let vocabulary = try modelContext.fetch(FetchDescriptor<VocabularyWord>()).map(\.word)
-        let destinations = try modelContext.fetch(FetchDescriptor<WordReplacement>()).map(\.replacementText)
-        return Set(vocabulary + destinations)
+    func unsavedSuggestions(_ suggestions: [AutoLearnReviewDecision]) throws -> [AutoLearnReviewDecision] {
+        guard !suggestions.isEmpty else { return [] }
+        let entries = try modelContext.fetch(FetchDescriptor<WordReplacement>())
+        let savedSources = Set(entries.flatMap {
+            WordReplacementVariants.parse($0.originalText).map { WordReplacementVariants.key(for: $0) }
+        })
+        return suggestions.filter { suggestion in
+            guard let source = suggestion.incorrectTextToReplace,
+                let destination = suggestion.correctedVocabularyTerm else { return false }
+            let sourceKey = WordReplacementVariants.key(for: source)
+            return !savedSources.contains(sourceKey)
+                && !wouldCreateCycle(sourceKey: sourceKey,
+                    destinationSourceKey: WordReplacementVariants.key(for: destination), entries: entries)
+        }
     }
 
     func apply(

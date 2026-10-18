@@ -1,20 +1,30 @@
 import Foundation
 
 actor AutoLearnReviewProposalStore {
+    private struct LegacyStoredState: Decodable {
+        let proposals: [AutoLearnReviewProposal]
+        let dismissedPairs: [String]
+    }
+
     private let fileManager: FileManager
     private let fileURL: URL
+    private let dismissedPairsFileURL: URL
     private var proposals: [AutoLearnReviewProposal] = []
+    private var dismissedPairs = Set<String>()
     private var isLoaded = false
 
-    init(fileManager: FileManager = .default, fileURL: URL? = nil) {
+    init(fileManager: FileManager = .default, fileURL: URL? = nil, dismissedPairsFileURL: URL? = nil) {
         self.fileManager = fileManager
         let applicationSupport = fileManager.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         )[0]
-        self.fileURL = fileURL ?? applicationSupport
+        let proposalsURL = fileURL ?? applicationSupport
             .appendingPathComponent("com.prakashjoshipax.VoiceInk", isDirectory: true)
             .appendingPathComponent("auto-learn-review-proposals.json")
+        self.fileURL = proposalsURL
+        self.dismissedPairsFileURL = dismissedPairsFileURL ?? proposalsURL.deletingLastPathComponent()
+            .appendingPathComponent("auto-learn-dismissed-pairs.json")
     }
 
     func all() throws -> [AutoLearnReviewProposal] {
@@ -25,7 +35,7 @@ actor AutoLearnReviewProposalStore {
     func append(
         decisions: [AutoLearnReviewDecision],
         candidates: [AutoLearnReviewCandidate]
-    ) throws {
+    ) throws -> Int {
         try loadIfNeeded()
         let candidatesByID = Dictionary(
             uniqueKeysWithValues: candidates.map { ($0.candidateID, $0) }
@@ -47,9 +57,10 @@ actor AutoLearnReviewProposalStore {
         }
         var knownKeys = Set(proposals.map(Self.proposalKey))
         let uniqueAdditions = additions.filter {
-            knownKeys.insert(Self.proposalKey($0)).inserted
+            !dismissedPairs.contains(Self.correctionKey($0))
+                && knownKeys.insert(Self.proposalKey($0)).inserted
         }
-        guard !uniqueAdditions.isEmpty else { return }
+        guard !uniqueAdditions.isEmpty else { return 0 }
         let originalProposals = proposals
         proposals.append(contentsOf: uniqueAdditions)
         do {
@@ -57,6 +68,29 @@ actor AutoLearnReviewProposalStore {
         } catch {
             proposals = originalProposals
             throw error
+        }
+        return uniqueAdditions.count
+    }
+
+    /// A user's declined correction also overrides later automatic AI learning.
+    func excludingDismissed(
+        _ decisions: [AutoLearnReviewDecision], candidates: [AutoLearnReviewCandidate]
+    ) throws -> [AutoLearnReviewDecision] {
+        try loadIfNeeded()
+        guard !dismissedPairs.isEmpty else { return decisions }
+        let candidatesByID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.candidateID, $0) })
+        return decisions.filter { decision in
+            if decision.learningAction == .rejectCorrection { return true }
+            let proposedKey = Self.correctionKey(source: decision.incorrectTextToReplace,
+                destination: decision.correctedVocabularyTerm)
+            if dismissedPairs.contains(proposedKey) { return false }
+            if let candidate = candidatesByID[decision.candidateID],
+                let observed = CorrectionDiffEngine.replacementPair(from: .init(
+                    original: candidate.originalText, corrected: candidate.correctedText)),
+                dismissedPairs.contains(Self.correctionKey(source: observed.source, destination: observed.destination)) {
+                return false
+            }
+            return true
         }
     }
 
@@ -74,6 +108,23 @@ actor AutoLearnReviewProposalStore {
                 throw error
             }
         }
+    }
+
+    /// Explicit dismissal and an ignored popup both suppress this correction
+    /// pair permanently. Approval removes a proposal without suppressing it.
+    func dismiss(_ proposalIDs: Set<UUID>) throws {
+        guard !proposalIDs.isEmpty else { return }
+        try loadIfNeeded()
+        let dismissed = proposals.filter { proposalIDs.contains($0.id) }
+        guard !dismissed.isEmpty else { return }
+
+        let updatedPairs = dismissedPairs.union(dismissed.map(Self.correctionKey))
+        try write(updatedPairs.sorted(), to: dismissedPairsFileURL)
+        dismissedPairs = updatedPairs
+        proposals.removeAll { dismissedPairs.contains(Self.correctionKey($0)) }
+        // History is authoritative and already saved. If proposal cleanup fails,
+        // loading still filters these pairs, and the next save cleans up the file.
+        try? save()
     }
 
     func update(
@@ -108,26 +159,58 @@ actor AutoLearnReviewProposalStore {
 
     private func loadIfNeeded() throws {
         guard !isLoaded else { return }
-        defer { isLoaded = true }
-        guard fileManager.fileExists(atPath: fileURL.path) else { return }
-        let data = try Data(contentsOf: fileURL)
-        proposals = try JSONDecoder().decode([AutoLearnReviewProposal].self, from: data)
+        let decoder = JSONDecoder()
+        var loadedDismissedPairs = Set<String>()
+        if fileManager.fileExists(atPath: dismissedPairsFileURL.path) {
+            let data = try Data(contentsOf: dismissedPairsFileURL)
+            loadedDismissedPairs = Set(try decoder.decode([String].self, from: data))
+        }
+
+        var loadedProposals: [AutoLearnReviewProposal] = []
+        if fileManager.fileExists(atPath: fileURL.path) {
+            let data = try Data(contentsOf: fileURL)
+            if let legacy = try? decoder.decode(LegacyStoredState.self, from: data) {
+                loadedDismissedPairs.formUnion(legacy.dismissedPairs)
+                loadedProposals = legacy.proposals.filter { !loadedDismissedPairs.contains(Self.correctionKey($0)) }
+                // Save history first so interrupted migration cannot lose it.
+                try write(loadedDismissedPairs.sorted(), to: dismissedPairsFileURL)
+                try write(loadedProposals, to: fileURL)
+            } else {
+                loadedProposals = try decoder.decode([AutoLearnReviewProposal].self, from: data)
+            }
+        }
+        dismissedPairs = loadedDismissedPairs
+        proposals = loadedProposals.filter { !dismissedPairs.contains(Self.correctionKey($0)) }
+        isLoaded = true
     }
 
     private func save() throws {
-        let directory = fileURL.deletingLastPathComponent()
+        try write(proposals, to: fileURL)
+    }
+
+    private func write<T: Encodable>(_ value: T, to url: URL) throws {
+        let directory = url.deletingLastPathComponent()
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(proposals).write(to: fileURL, options: .atomic)
+        try encoder.encode(value).write(to: url, options: .atomic)
     }
 
     private static func proposalKey(_ proposal: AutoLearnReviewProposal) -> String {
         [
-            proposal.candidateID.uuidString,
             proposal.learningAction.rawValue,
-            proposal.incorrectTextToReplace ?? "",
-            proposal.correctedVocabularyTerm ?? ""
+            correctionKey(proposal)
+        ].joined(separator: "\u{0}")
+    }
+
+    private static func correctionKey(_ proposal: AutoLearnReviewProposal) -> String {
+        correctionKey(source: proposal.incorrectTextToReplace, destination: proposal.correctedVocabularyTerm)
+    }
+
+    private static func correctionKey(source: String?, destination: String?) -> String {
+        [
+            WordReplacementVariants.key(for: source ?? ""),
+            WordReplacementVariants.destinationKey(for: destination ?? "")
         ].joined(separator: "\u{0}")
     }
 }

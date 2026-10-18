@@ -195,16 +195,13 @@ enum BackupImporter {
         if let finishAndSendKey = general.finishAndSendKey.flatMap(FinishAndSendKey.init(rawValue:)) {
             UserDefaults.standard.set(finishAndSendKey.rawValue, forKey: FinishAndSendSettings.key)
         }
-        let importedReviewSchedule = general.autoLearnReviewSchedule.flatMap {
-            AutoLearnReviewSchedule(rawValue: $0)
-        }
-        if let importedReviewSchedule {
-            UserDefaults.standard.set(importedReviewSchedule.rawValue, forKey: AutoLearnSettings.reviewScheduleKey)
-        }
         if let autoLearnEnabled = general.isAutoLearnDictionaryEnabled {
             UserDefaults.standard.set(autoLearnEnabled, forKey: AutoLearnSettings.isEnabledKey)
         }
-        if let aiReviewEnabled = general.isAutoLearnAIReviewEnabled {
+        let aiReviewEnabled = general.isAutoLearnAIReviewEnabled
+            ?? general.autoLearnReviewSchedule.map { $0 != "manually" }
+            ?? (general.isAutoLearnDictionaryEnabled != nil ? true : nil)
+        if let aiReviewEnabled {
             UserDefaults.standard.set(aiReviewEnabled, forKey: AutoLearnSettings.aiReviewEnabledKey)
         }
         if let provider = general.autoLearnProvider {
@@ -213,15 +210,12 @@ enum BackupImporter {
         if let model = general.autoLearnModel {
             UserDefaults.standard.set(model, forKey: AutoLearnSettings.modelKey)
         }
-        if general.isAutoLearnDictionaryEnabled != nil || importedReviewSchedule != nil
-            || general.isAutoLearnAIReviewEnabled != nil {
+        if general.isAutoLearnDictionaryEnabled != nil || aiReviewEnabled != nil {
             Task {
                 if let autoLearnEnabled = general.isAutoLearnDictionaryEnabled {
                     await AutoLearnService.shared.settingDidChange(isEnabled: autoLearnEnabled)
-                } else if general.isAutoLearnAIReviewEnabled != nil {
-                    await AutoLearnService.shared.reviewMethodDidChange()
                 } else {
-                    await AutoLearnService.shared.reviewScheduleDidChange()
+                    await AutoLearnService.shared.reviewMethodDidChange()
                 }
             }
         }

@@ -99,7 +99,7 @@ struct GeneralBackup: Codable {
     let finishAndSendKey: String?
     let isAutoLearnDictionaryEnabled: Bool?
     let isAutoLearnAIReviewEnabled: Bool?
-    let autoLearnReviewSchedule: String?
+    var autoLearnReviewSchedule: String? = nil // Decode legacy backups only.
     let autoLearnProvider: String?
     let autoLearnModel: String?
 }

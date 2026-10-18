@@ -4,7 +4,7 @@ struct AutoLearnFailurePanel: View {
     let onClose: () -> Void
 
     @AppStorage(AutoLearnSettings.isEnabledKey) private var isAutoLearnEnabled = true
-    @AppStorage(AutoLearnSettings.aiReviewEnabledKey) private var isAIReviewEnabled = true
+    @AppStorage(AutoLearnSettings.aiReviewEnabledKey) private var isAIReviewEnabled = false
     @AppStorage(AutoLearnSettings.hasFailureKey) private var hasFailure = false
     @AppStorage(AutoLearnSettings.failureMessageKey) private var failureMessage = ""
     @State private var pendingCount: Int?

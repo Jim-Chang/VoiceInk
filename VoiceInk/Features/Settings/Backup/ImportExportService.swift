@@ -188,7 +188,6 @@ class ImportExportService {
             finishAndSendKey: FinishAndSendSettings.selectedKey.rawValue,
             isAutoLearnDictionaryEnabled: AutoLearnSettings.isEnabled,
             isAutoLearnAIReviewEnabled: AutoLearnSettings.isAIReviewEnabled,
-            autoLearnReviewSchedule: AutoLearnSettings.reviewSchedule.rawValue,
             autoLearnProvider: AutoLearnSettings.selectedProvider?.rawValue,
             autoLearnModel: AutoLearnSettings.selectedModel
         )

@@ -8,6 +8,8 @@ final class NotificationManager {
     private var notificationWindow: NSPanel?
     private var dismissTimer: Timer?
     private var notificationID: UUID?
+    private var usesRecorderPosition = false
+    private var recorderOverlayFrame: NSRect?
 
     private init() {}
 
@@ -16,12 +18,14 @@ final class NotificationManager {
         type: AppNotificationView.NotificationType,
         duration: TimeInterval = 3.0,
         onTap: (() -> Void)? = nil,
-        actionButton: (label: String, action: () -> Void)? = nil
+        actionButton: (label: String, action: () -> Void)? = nil,
+        atRecorderPosition: Bool = false
     ) {
         dismissTimer?.invalidate()
         dismissTimer = nil
         let notificationID = UUID()
         self.notificationID = notificationID
+        usesRecorderPosition = atRecorderPosition
 
         if let existingWindow = notificationWindow {
             existingWindow.close()
@@ -62,7 +66,11 @@ final class NotificationManager {
         panel.hasShadow = false
         panel.isMovableByWindowBackground = false
 
-        positionWindow(panel)
+        if atRecorderPosition {
+            guard positionRecorderNotification(panel) else { return }
+        } else {
+            positionWindow(panel)
+        }
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil as Any?)
 
@@ -83,6 +91,23 @@ final class NotificationManager {
                 self?.dismissNotification(ifCurrent: notificationID)
             }
         }
+    }
+
+    func setRecorderOverlayFrame(_ frame: NSRect?) {
+        recorderOverlayFrame = frame
+        if usesRecorderPosition, let window = notificationWindow {
+            _ = positionRecorderNotification(window)
+        }
+    }
+
+    private func positionRecorderNotification(_ window: NSWindow) -> Bool {
+        guard var metrics = MiniRecorderPanel.calculateWindowMetrics(size: window.frame.size) else { return false }
+        // A learned notification must not cover another suggestion's actions.
+        if let overlay = recorderOverlayFrame, overlay.intersects(metrics) {
+            metrics.origin.y = overlay.maxY + 8
+        }
+        window.setFrameOrigin(metrics.origin)
+        return true
     }
 
     private func positionWindow(_ window: NSWindow) {
@@ -107,6 +132,7 @@ final class NotificationManager {
 
         notificationWindow = nil
         notificationID = nil
+        usesRecorderPosition = false
 
         dismissTimer?.invalidate()
         dismissTimer = nil

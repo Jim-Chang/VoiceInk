@@ -6,6 +6,14 @@ enum CorrectionDiffEngine {
         let correctedRange: NSRange
     }
 
+    static func replacementPair(from revision: AutoLearnRevision) -> (source: String, destination: String)? {
+        guard let edit = singleEdit(from: revision) else { return nil }
+        return (
+            (revision.original as NSString).substring(with: edit.originalRange),
+            (revision.corrected as NSString).substring(with: edit.correctedRange)
+        )
+    }
+
     /// Recover the precise changed span from a contextual snippet. Multiple
     /// edits, insertions and deletions are deliberately ineligible locally.
     static func singleEdit(from revision: AutoLearnRevision) -> Edit? {
