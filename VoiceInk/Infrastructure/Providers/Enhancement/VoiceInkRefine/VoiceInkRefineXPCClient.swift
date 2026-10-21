@@ -61,7 +61,12 @@ private enum VoiceInkRefineXPCOperationWaiter {
 }
 
 actor VoiceInkRefineXPCClient {
-    private static let warmGracePeriod: Duration = .seconds(10)
+    /// voiceink-zhtw：用完後模型留在記憶體多久才卸載（原本寫死 10 秒，短句常來不及在錄音時載入完）。
+    /// 調整：defaults write com.prakashjoshipax.VoiceInk ZhTWRefineKeepWarmSeconds -int 秒數
+    private static var warmGracePeriod: Duration {
+        let seconds = UserDefaults.standard.integer(forKey: "ZhTWRefineKeepWarmSeconds")
+        return .seconds(seconds > 0 ? seconds : 300)
+    }
 
     private let logger = Logger(
         subsystem: "com.prakashjoshipax.voiceink",
