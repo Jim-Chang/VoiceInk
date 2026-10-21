@@ -39,6 +39,8 @@ actor VoiceInkRefineInferenceEngine {
         private var preparationTask: Task<Void, Error>?
         private var preparationIdentity: PreparationIdentity?
         private var isWarmed = false
+        /// voiceink-zhtw：上一次補標點做完的時間，用來記錄閒置多久
+        private var lastEnhanceFinishedAt: ContinuousClock.Instant?
     #endif
 
     func prepare(
@@ -91,23 +93,31 @@ actor VoiceInkRefineInferenceEngine {
     func enhance(
         transcript: String,
         modelDirectory: URL,
-        systemPrompt: String
+        systemPrompt: String,
+        requestID: UUID? = nil
     ) async throws -> String {
         #if arch(arm64)
             guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return transcript
             }
 
+            let clock = ContinuousClock()
+            let startedAt = clock.now
+            let wasWarm = isWarmed && modelContainer != nil
+            let idle = lastEnhanceFinishedAt.map { ZhTWTiming.seconds(startedAt - $0) } ?? "-"
+
             try await prepare(
                 modelDirectory: modelDirectory,
                 systemPrompt: systemPrompt
             )
+            let preparedAt = clock.now
 
             guard let modelContainer else {
                 throw VoiceInkRefineInferenceError.modelNotLoaded
             }
 
             let inputTokenCount = await modelContainer.encode(transcript).count
+            let encodedAt = clock.now
             let maximumOutputTokens = Self.maximumOutputTokens(
                 forInputTokenCount: inputTokenCount
             )
@@ -118,6 +128,7 @@ actor VoiceInkRefineInferenceEngine {
             )
 
             var output = ""
+            var completionInfo: GenerateCompletionInfo?
 
             do {
                 for try await event in session.streamDetails(to: transcript) {
@@ -125,8 +136,8 @@ actor VoiceInkRefineInferenceEngine {
                     switch event {
                     case .chunk(let text):
                         output.append(contentsOf: text)
-                    case .info:
-                        break
+                    case .info(let info):
+                        completionInfo = info
                     case .toolCall:
                         break
                     }
@@ -136,6 +147,19 @@ actor VoiceInkRefineInferenceEngine {
                 await session.clear()
                 throw error
             }
+
+            let finishedAt = clock.now
+            lastEnhanceFinishedAt = finishedAt
+            Self.logEnhanceTiming(
+                requestID: requestID,
+                wasWarm: wasWarm,
+                idle: idle,
+                prepare: preparedAt - startedAt,
+                encode: encodedAt - preparedAt,
+                inputTokenCount: inputTokenCount,
+                info: completionInfo,
+                total: finishedAt - startedAt
+            )
 
             guard !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw VoiceInkRefineInferenceError.emptyOutput
@@ -186,7 +210,10 @@ actor VoiceInkRefineInferenceEngine {
             modelDirectory: URL,
             systemPrompt: String
         ) async throws {
+            let clock = ContinuousClock()
+            let startedAt = clock.now
             let container = try await loadContainerIfNeeded(from: modelDirectory)
+            let loadedAt = clock.now
 
             guard !isWarmed else { return }
 
@@ -205,6 +232,31 @@ actor VoiceInkRefineInferenceEngine {
             try Task.checkCancellation()
 
             isWarmed = true
+            ZhTWTiming.logger.notice(
+                "engine-prepare load=\(ZhTWTiming.seconds(loadedAt - startedAt), privacy: .public) warmup=\(ZhTWTiming.seconds(clock.now - loadedAt), privacy: .public) qos=\(ZhTWTiming.currentQoS, privacy: .public)"
+            )
+        }
+
+        /// voiceink-zhtw：延遲調查用，只記時間和 token 數
+        private static func logEnhanceTiming(
+            requestID: UUID?,
+            wasWarm: Bool,
+            idle: String,
+            prepare: Duration,
+            encode: Duration,
+            inputTokenCount: Int,
+            info: GenerateCompletionInfo?,
+            total: Duration
+        ) {
+            let id = requestID.map(ZhTWTiming.shortID) ?? "-"
+            let promptTokens = info.map { String($0.promptTokenCount) } ?? "-"
+            let promptTime = info.map { ZhTWTiming.seconds($0.promptTime) } ?? "-"
+            let outputTokens = info.map { String($0.generationTokenCount) } ?? "-"
+            let generateTime = info.map { ZhTWTiming.seconds($0.generateTime) } ?? "-"
+            let stop = info.map { String(describing: $0.stopReason) } ?? "-"
+            ZhTWTiming.logger.notice(
+                "engine-enhance id=\(id, privacy: .public) warm=\(wasWarm ? 1 : 0, privacy: .public) idle=\(idle, privacy: .public) prepare=\(ZhTWTiming.seconds(prepare), privacy: .public) encode=\(ZhTWTiming.seconds(encode), privacy: .public) inputTokens=\(inputTokenCount, privacy: .public) promptTokens=\(promptTokens, privacy: .public) prompt=\(promptTime, privacy: .public) outputTokens=\(outputTokens, privacy: .public) generate=\(generateTime, privacy: .public) stop=\(stop, privacy: .public) total=\(ZhTWTiming.seconds(total), privacy: .public) thermal=\(ZhTWTiming.thermalState, privacy: .public) lowPower=\(ZhTWTiming.lowPowerMode, privacy: .public) qos=\(ZhTWTiming.currentQoS, privacy: .public)"
+            )
         }
 
         private func loadContainerIfNeeded(

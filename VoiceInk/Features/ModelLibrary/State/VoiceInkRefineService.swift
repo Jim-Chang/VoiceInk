@@ -151,9 +151,13 @@ final class VoiceInkRefineService: ObservableObject {
             systemPrompt: activeSystemPrompt
         )
         // voiceink-zhtw：只採用模型加的標點，字一律用原文的
-        return ZhTWPunctuation.isInstalled
-            ? ZhTWPunctuation.merge(original: transcript, modelOutput: output)
-            : output
+        guard ZhTWPunctuation.isInstalled else { return output }
+        let mergeStartedAt = ContinuousClock.now
+        let merged = ZhTWPunctuation.merge(original: transcript, modelOutput: output)
+        ZhTWTiming.logger.notice(
+            "merge chars=\(transcript.count, privacy: .public) merge=\(ZhTWTiming.seconds(ContinuousClock.now - mergeStartedAt), privacy: .public)"
+        )
+        return merged
     }
 
     /// voiceink-zhtw：裝了繁中補標點模型時，改用它的指示
