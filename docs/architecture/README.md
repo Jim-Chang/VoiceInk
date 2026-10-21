@@ -57,9 +57,11 @@ VoiceInk.app
 | 檔案 | 改了什麼 |
 |---|---|
 | `VoiceInk/Features/ZhTW/ZhTWPunctuation.swift`(新增) | 模型位置、繁中指示、範例、合併邏輯 |
-| `VoiceInk/Features/ModelLibrary/State/VoiceInkRefineService.swift` | 有 Breeze2 時改用它的資料夾與指示,輸出後合併 |
-| `VoiceInkRefineXPC/VoiceInkRefineInferenceEngine.swift` | 範例展開成多輪對話、temperature 0 |
-| `VoiceInk/Infrastructure/Providers/Enhancement/VoiceInkRefine/VoiceInkRefineXPCClient.swift` | 閒置卸載時間改成可設定,預設 5 分鐘 |
+| `VoiceInk/Features/ModelLibrary/State/VoiceInkRefineService.swift` | 有 Breeze2 時改用它的資料夾與指示,輸出後合併;計時紀錄 |
+| `VoiceInkRefineXPC/VoiceInkRefineInferenceEngine.swift` | 範例展開成多輪對話、temperature 0;計時紀錄 |
+| `VoiceInk/Infrastructure/Providers/Enhancement/VoiceInkRefine/VoiceInkRefineXPCClient.swift` | 閒置卸載時間改成可設定,預設 5 分鐘;計時紀錄 |
+| `VoiceInk/Features/ZhTW/ZhTWTiming.swift`、`VoiceInkRefineXPC/ZhTWTiming.swift`(新增) | 延遲調查的計時紀錄(只記時間和數量) |
+| `VoiceInkRefineXPC/VoiceInkRefineXPCService.swift` | 計時紀錄 |
 | `README.md` | 換成這個 fork 的說明 |
 
 ## 決策紀錄

@@ -42,6 +42,18 @@ git push origin zhtw
 - **簽章**:鑰匙圈裡剛好一張 Apple Development 憑證時,`make local` 會自動用它。簽章固定,重新 build 後麥克風、輔助使用權限不用重給;沒有憑證時用 ad-hoc 簽章,每次 build 後可能要重給。
 - 新的 `.swift` 檔放在 `VoiceInk/` 底下會自動加進 App target(Xcode 的 synchronized group),不用改 `project.pbxproj`;`VoiceInkRefineXPC/` 是另一個 target,看不到 App 的檔案。
 
+## 查延遲
+
+補標點的每一段時間都記在系統紀錄(category `ZhTWTiming`,只有時間和數量):
+
+```bash
+python3 -I scripts/timing_report.py --last 1h       # 每次聽寫一行
+python3 -I scripts/bench/sample_load.py load.tsv 900 # 另開一個終端機:記 15 分鐘的 GPU、CPU 負載
+python3 -I scripts/timing_report.py --last 1h --load load.tsv
+```
+
+欄位說明在 `scripts/timing_report.py` 開頭。系統紀錄會保留幾天,要更久就把輸出存起來。
+
 ## 測試
 
 - `scripts/test-punctuation.sh`:只編 `ZhTWPunctuation.swift` 加測試程式,跑 `scripts/fixtures/punctuation-cases.json`,不用 build App、不用模型。改合併邏輯時先加案例。
