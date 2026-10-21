@@ -58,6 +58,91 @@ enum ZhTWPunctuation {
         return fewShotMarker + String(decoding: data, as: UTF8.self)
     }()
 
+    // MARK: - 長的逐字稿分段
+
+    /// 一次給模型太長的逐字稿，它容易把整段當成要回應的話，只回幾句
+    /// （實測 582 字只回 33 個 token），合併時對不上就整段沒有標點。
+    /// 所以每段最多這麼多字。
+    static let chunkCharacters = 120
+
+    private static let sentenceEnds: Set<Character> = Set("。？！")
+    private static let clauseEnds: Set<Character> = Set("，；：、")
+
+    /// 補標點的入口：短的直接補；長的分段補，每段補完後只確定到最後一個句尾標點
+    /// （沒有就退一步到最後一個逗號），剩下的字併到下一段重做，讓分段落在模型認為的句子結尾。
+    /// 段尾的標點不算：分段可能切在句子中間，模型會以為句子結束了。
+    /// `model` 收一段沒標點的逐字稿、回傳模型的原始輸出。
+    static func punctuate(
+        _ transcript: String,
+        using model: (String) async throws -> String
+    ) async throws -> String {
+        let source = Array(transcript)
+        var result = ""
+        var start = 0
+        while start < source.count {
+            var end = min(start + chunkCharacters, source.count)
+            // 不要切在英文單字或數字中間
+            while end < source.count, end > start + chunkCharacters / 2,
+                isWordCharacter(source[end - 1]), isWordCharacter(source[end])
+            {
+                end -= 1
+            }
+
+            let piece = Array(source[start..<end])
+            var merged = Array(merge(original: String(piece), modelOutput: try await model(String(piece))))
+            if end == source.count {
+                result += String(merged)
+                break
+            }
+            guard let cut = cutPoint(in: merged, original: piece, minimumConsumed: piece.count / 2) else {
+                // 找不到可以切的標點：整段收下，但段尾的標點拿掉
+                while let last = merged.last, closing.contains(last) { merged.removeLast() }
+                result += String(merged)
+                start = end
+                continue
+            }
+
+            result += String(merged[...cut.mergedIndex])
+            start += cut.consumed
+            // 句尾標點後面的空白不要帶到下一段
+            while start < source.count, source[start].isWhitespace { start += 1 }
+        }
+        return result
+    }
+
+    private static func isWordCharacter(_ character: Character) -> Bool {
+        character.isASCII && (character.isLetter || character.isNumber)
+    }
+
+    /// 合併結果裡可以切的位置：段落中間最後一個句尾標點（含後面的「」』）」），
+    /// 沒有就用最後一個逗號；回傳位置和到那裡為止用掉幾個原文字元。
+    /// 合併只插標點、只拿掉標點旁的空白，所以逐字走一遍就能對回原文。
+    private static func cutPoint(
+        in merged: [Character],
+        original: [Character],
+        minimumConsumed: Int
+    ) -> (mergedIndex: Int, consumed: Int)? {
+        var consumedAfter: [Int] = []
+        var j = 0
+        for character in merged {
+            while j < original.count, original[j] != character, original[j].isWhitespace { j += 1 }
+            if j < original.count, original[j] == character { j += 1 }
+            consumedAfter.append(j)
+        }
+
+        func last(of marks: Set<Character>) -> (mergedIndex: Int, consumed: Int)? {
+            for index in merged.indices.reversed() where marks.contains(merged[index]) {
+                var end = index
+                while end + 1 < merged.count, "」』）".contains(merged[end + 1]) { end += 1 }
+                let consumed = consumedAfter[end]
+                if consumed >= original.count { continue }  // 段尾的標點
+                return consumed >= minimumConsumed ? (end, consumed) : nil
+            }
+            return nil
+        }
+        return last(of: sentenceEnds) ?? last(of: clauseEnds)
+    }
+
     // MARK: - 只把標點插回原文
 
     /// 整句對得上的比例低於這個值（例如模型跑去回答問題）就整句放棄；

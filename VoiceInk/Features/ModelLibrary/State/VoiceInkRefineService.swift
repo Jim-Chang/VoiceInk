@@ -145,19 +145,30 @@ final class VoiceInkRefineService: ObservableObject {
             throw VoiceInkRefineError.modelNotDownloaded
         }
 
-        let output = try await inferenceClient.enhance(
-            transcript: transcript,
-            modelDirectory: snapshotURL,
-            systemPrompt: activeSystemPrompt
-        )
-        // voiceink-zhtw：只採用模型加的標點，字一律用原文的
-        guard ZhTWPunctuation.isInstalled else { return output }
-        let mergeStartedAt = ContinuousClock.now
-        let merged = ZhTWPunctuation.merge(original: transcript, modelOutput: output)
+        guard ZhTWPunctuation.isInstalled else {
+            return try await inferenceClient.enhance(
+                transcript: transcript,
+                modelDirectory: snapshotURL,
+                systemPrompt: activeSystemPrompt
+            )
+        }
+
+        // voiceink-zhtw：長的分段補；只採用模型加的標點，字一律用原文的
+        let systemPrompt = activeSystemPrompt
+        let startedAt = ContinuousClock.now
+        var chunks = 0
+        let punctuated = try await ZhTWPunctuation.punctuate(transcript) { piece in
+            chunks += 1
+            return try await inferenceClient.enhance(
+                transcript: piece,
+                modelDirectory: snapshotURL,
+                systemPrompt: systemPrompt
+            )
+        }
         ZhTWTiming.logger.notice(
-            "merge chars=\(transcript.count, privacy: .public) merge=\(ZhTWTiming.seconds(ContinuousClock.now - mergeStartedAt), privacy: .public)"
+            "merge chars=\(transcript.count, privacy: .public) chunks=\(chunks, privacy: .public) total=\(ZhTWTiming.seconds(ContinuousClock.now - startedAt), privacy: .public)"
         )
-        return merged
+        return punctuated
     }
 
     /// voiceink-zhtw：裝了繁中補標點模型時，改用它的指示
