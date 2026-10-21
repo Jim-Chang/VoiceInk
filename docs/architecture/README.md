@@ -76,9 +76,11 @@ VoiceInk.app
 - **2026-10-21 範例一定要用多輪對話。** 範例寫在系統指示裡時,16 句有 7 句模型改寫或回答問題;XPC 只能傳一段字串,所以把範例包成 JSON 由引擎展開。
 - **2026-10-21 模型閒置 5 分鐘才卸載。** 原作者寫死 10 秒,短句來不及在錄音期間載入,閒置後第一句要多等約 2 秒。
 - **2026-10-21 用公開 fork、不回饋上游、照自己的慣例。** GitHub 規定公開專案的 fork 只能公開。文件繁中、commit 訊息英文。v1 的完整紀錄(含實際聽寫的測試數據)留在私人 repo `voiceink-zhtw-lmstudio`(標籤 `v1-two-apps`)。
+- **2026-10-21 實際聽寫的實驗資料另開私人 repo `voiceink-zhtw-data`。** v1 的 repo 名稱綁著 LM Studio,不適合放 v2 之後的資料;公開文件只放統計數字。
+- **2026-10-21 修正:補標點偶爾多 1.6 秒是模型被重新載入。** 傳給 XPC 的指示字串由 Swift 字典轉 JSON,key 順序不固定,引擎以為指示換了就卸載重來。改成只產生一次、key 排序。見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。
 
 ## 目前進度
 
 - v2 完成並在 M1 Pro 32GB 上使用中。
-- 進行中:延遲調查(補標點偶爾多 1.5 秒、整體怎麼變快),見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。結果可能改變補標點的做法,所以下面的 App 內下載先暫停。
+- 進行中:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。實驗 A(補標點偶爾多 1.6 秒)已找到原因並修正;接著做 B(語音辨識加速)、C(補標點加速)。C 的結果可能改變補標點的做法,所以下面的 App 內下載先暫停。
 - 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。
