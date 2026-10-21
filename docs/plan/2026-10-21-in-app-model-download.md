@@ -26,8 +26,8 @@
 
 1. `ZhTWPunctuation` 加上 repo(`MXLouis/Llama-Breeze2-3B-Instruct-Text-mlx-4Bit`)、revision(`acaf9551…`)、8 個檔案的大小和 SHA256;拿掉舊位置的 `modelDirectory`、`isInstalled`。
 2. `VoiceInkRefineModelDownloader.files` 改用 `ZhTWPunctuation` 的清單。續傳、逐檔驗證、`.voiceink-integrity.json` 都沿用。
-3. `VoiceInkRefineService`:`repositoryID`、`pinnedRevision` 改用 `ZhTWPunctuation` 的;指示固定用繁中範例、輸出固定經過 `merge`,拿掉「資料夾存在才啟用」的分支。`modelName` 維持 `VoiceInk Refine V1`(模式設定存的是這個字串)。
-4. Refine 卡片的說明改成繁中補標點。
+3. `VoiceInkRefineService`:`repositoryID`、`pinnedRevision` 改用 `ZhTWPunctuation` 的;指示固定用繁中範例、輸出固定經過 `merge`,拿掉「資料夾存在才啟用」的分支。
+4. 模型名稱 `modelName` 從 `VoiceInk Refine V1` 改成 `Breeze2-3B 補標點`,Refine 卡片的說明改成繁中補標點。VoiceInk 每次啟動都會把用 VoiceInk Refine 的模式改成目前的模型名稱(`AIEnhancementService.repairModePromptSelections`),舊設定不會壞;Provider 的名稱 `VoiceInk Refine` 不改(模式設定靠它找到 Provider,改了模式會失效)。`configure_voiceink.py`、`docs/development.md` 跟著改。
 5. XPC 引擎每次補標點記錄輸入、輸出 token 數和耗時(不記內容),用來查 v2 紀錄裡 2.47 秒的那一句。
 6. 模型位置改成 `~/Library/Application Support/com.prakashjoshipax.VoiceInk/VoiceInkRefine/`(原作者下載器的位置)。這台的舊資料夾 `ZhTWPunctuation/` 在驗證時處理,不寫搬移程式。
 7. `scripts/setup.sh` 不再下載補標點模型;`check` 改看新位置。
@@ -66,7 +66,7 @@ scripts/setup.sh check        # 安裝狀態
 
 | 步驟 | 怎麼驗 |
 |---|---|
-| b | 把 `ZhTWPunctuation/` 移到暫存處 → 打開 App,Refine 卡片顯示未下載、約 2.0GB → 按下載 → `VoiceInkRefine/` 有 8 個檔案和 `.voiceink-integrity.json` → 聽寫有標點、紀錄的 `ZAIENHANCEMENTMODELNAME` 是 `VoiceInk Refine V1` → 刪掉暫存處的舊資料夾 |
+| b | 把 `ZhTWPunctuation/` 移到暫存處 → 打開 App,Refine 卡片顯示未下載、約 2.0GB → 按下載 → `VoiceInkRefine/` 有 8 個檔案和 `.voiceink-integrity.json` → 聽寫有標點、紀錄的 `ZAIENHANCEMENTMODELNAME` 是 `Breeze2-3B 補標點`、模式設定裡的模型名稱已自動更新 → 刪掉暫存處的舊資料夾 |
 | c | 讀程式確認;和 a2 一起實測 |
 | a1 | 「AI Models → Local」出現 Breeze ASR 25 且顯示已下載;`curl -sIL` 確認固定網址回 200、大小 1656129691 |
 | a2 | `defaults export` 備份設定 → 把 ASR 模型移到暫存處、`hasCompletedOnboardingV2` 設為 false → 重跑初始設定:只出現 Breeze-ASR-25,下載完 SHA256 是 `d4b187c4…`,建立的模式是 Breeze + 中文 + VoiceInk Refine → 關掉 VoiceInk、`defaults import` 還原、刪掉暫存檔 |
