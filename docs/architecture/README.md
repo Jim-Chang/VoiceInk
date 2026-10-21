@@ -1,0 +1,81 @@
+# 架構與設計規劃
+
+這份文件是這個 fork「想做什麼、已經決定什麼、現在進行到哪裡」的唯一真相來源(single source of truth)。研究細節與來源在 [../investigations/](../investigations/),執行步驟與紀錄在 [../plan/](../plan/),這裡只放結論與決策。
+
+最後更新:2026-10-21(v2:單一 App,補標點改由 VoiceInk Refine 的引擎執行)。
+
+## 專案目標
+
+1. **在 Mac 上用語音輸入台灣繁體中文**,主要用在 Claude Code 等文字輸入框。輸出**一定是繁體**。
+2. **自動加上標點符號**,而且不能改動講的字。
+3. **全部在本機執行**,不把聲音或文字送到雲端。
+4. **換一台 Mac 也能很快裝好**。
+
+## 非目標
+
+- **邊講邊把字打進輸入框**:VoiceInk 的即時轉錄只把文字顯示在自己的錄音面板,講完才一次貼上;Breeze-ASR-25 屬於 Whisper 類模型,本來就要聽完一段才辨識(見 [../investigations/2026-10-21-dictation-app-and-asr.md](../investigations/2026-10-21-dictation-app-and-asr.md))。真的需要時用 macOS 內建聽寫。
+- **回饋給原作者**:這個 fork 不會發 PR 回 [Beingpax/VoiceInk](https://github.com/Beingpax/VoiceInk),所以照自己的慣例改(文件、README、腳本),不用為了上游而壓低改動量。但仍會定期合併上游更新(見 [../development.md](../development.md))。
+- **雲端辨識或潤稿服務**、**Intel Mac**、**16GB 以下記憶體的 Mac**(VoiceInk Refine 的限制)。
+
+## 指導原則
+
+- **繁體由程式保證,不靠模型。** 語言模型只負責「建議標點」;最後輸出的每個字都來自語音辨識的原文(`ZhTWPunctuation.merge`)。模型改字、轉成簡體、改寫句子、跑去回答問題,都不會出現在結果裡。
+- **出錯就貼原文,不卡住。** 模型沒載入、對齊失敗,一律回傳沒標點的原文。
+- **用 VoiceInk 已經有的機制。** 語音辨識用它的 whisper.cpp 模型管理,補標點用它的 VoiceInk Refine(App 內的 MLX 引擎,跑在獨立的 XPC 子程序)。不另外架伺服器、不需要開機自動啟動。
+- **模型固定版本、核對 SHA256。** 兩個模型都是社群轉檔,固定在測過的 revision。
+- **用實際的聽寫內容做決策。** 模型選擇、參數調整都先跑測試、留數據(見 [../investigations/2026-10-21-punctuation-model-benchmark.md](../investigations/2026-10-21-punctuation-model-benchmark.md))。
+
+## 架構
+
+```
+按快捷鍵說話
+   ↓
+VoiceInk.app
+   ├─ 開始錄音的同時,在 VoiceInkRefineXPC 子程序載入 Breeze2-3B(背景進行)
+   ├─ 語音辨識:Breeze-ASR-25(whisper.cpp)→ 繁體、沒標點          約 1.2–2 秒
+   │    └─ 中文 Whisper 提示詞必須是繁體句子(否則會被帶成簡體)
+   ├─ Word Replacements(固定錯字替換)
+   ├─ AI 潤稿 = VoiceInk Refine → Breeze2-3B 建議標點               約 0.8 秒(模型已載入時)
+   │    ├─ 繁中指示 + 多輪範例(包成 JSON,由 XPC 引擎展開)、temperature 0
+   │    └─ ZhTWPunctuation.merge:對齊原文,只取前後字相鄰的標點
+   └─ 貼到游標位置
+   (模型用完 5 分鐘沒再用就卸載,釋放約 2GB 記憶體)
+```
+
+### 元件與位置
+
+| 元件 | 位置 | 說明 |
+|---|---|---|
+| VoiceInk.app | `/Applications/VoiceInk.app` | 這個 fork 的 `zhtw` 分支自己 build |
+| whisper.cpp 函式庫 | `~/VoiceInk-Dependencies/` | build 用,Xcode 專案寫死這個路徑,**別刪** |
+| 語音辨識模型 | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/WhisperModels/ggml-breeze-asr-25-q8_0.bin` | [Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25) 的 whisper.cpp 轉檔(1.7GB) |
+| 補標點模型 | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/ZhTWPunctuation/Llama-Breeze2-3B-Instruct-Text-mlx-4Bit/` | [Breeze2-3B](https://huggingface.co/MediaTek-Research/Llama-Breeze2-3B-Instruct) 的 MLX 4bit 轉檔(2GB);資料夾存在時 VoiceInk Refine 就改用它 |
+| 設定 | UserDefaults 網域 `com.prakashjoshipax.VoiceInk` | 由 `scripts/setup.sh configure` 寫入 |
+
+### 修改了原作者的哪些檔案
+
+| 檔案 | 改了什麼 |
+|---|---|
+| `VoiceInk/Features/ZhTW/ZhTWPunctuation.swift`(新增) | 模型位置、繁中指示、範例、合併邏輯 |
+| `VoiceInk/Features/ModelLibrary/State/VoiceInkRefineService.swift` | 有 Breeze2 時改用它的資料夾與指示,輸出後合併 |
+| `VoiceInkRefineXPC/VoiceInkRefineInferenceEngine.swift` | 範例展開成多輪對話、temperature 0 |
+| `VoiceInk/Infrastructure/Providers/Enhancement/VoiceInkRefine/VoiceInkRefineXPCClient.swift` | 閒置卸載時間改成可設定,預設 5 分鐘 |
+| `README.md` | 換成這個 fork 的說明 |
+
+## 決策紀錄
+
+- **2026-10-21 不用 Claude Code 內建的語音輸入。** 它的聽寫語言清單沒有中文,講普通話會輸出簡體,沒有設定能改(上游 issue [anthropics/claude-code#78728](https://github.com/anthropics/claude-code/issues/78728))。改用外部聽寫 App,把文字貼進輸入框。
+- **2026-10-21 選 VoiceInk + Breeze-ASR-25。** VoiceInk 開源(GPLv3)、能匯入 whisper.cpp 格式的模型;Breeze-ASR-25 針對台灣華語和中英夾雜,直接輸出繁體。macOS 內建聽寫能出繁體,但中文準確度沒有可靠數據。比較見 [../investigations/2026-10-21-dictation-app-and-asr.md](../investigations/2026-10-21-dictation-app-and-asr.md)。
+- **2026-10-21 自己 build VoiceInk。** 官網版要買授權(25 美元起);自己 build 免費、合法,也才能改程式。
+- **2026-10-21 中文 Whisper 提示詞改成繁體。** VoiceInk 內建的中文提示詞是簡體,把 Breeze 帶成簡體輸出(見 [../investigations/2026-10-21-traditional-output.md](../investigations/2026-10-21-traditional-output.md))。
+- **2026-10-21 v1:LM Studio + Breeze2-3B 補標點(兩個 App)。** 比較 Qwen3.5-2B、Qwen3.5-4B、Breeze2-3B 後選 Breeze2(最快、品質接近 4B、繁中特化)。VoiceInk 用 Local CLI 呼叫 Python 腳本,腳本呼叫 LM Studio。見 [../plan/2026-10-21-v1-lmstudio-two-apps.md](../plan/2026-10-21-v1-lmstudio-two-apps.md)。
+- **2026-10-21 合併時只取「前後字相鄰」的標點。** Breeze2 會把對話口吻的句子改寫(「我」改成「你」),原本整句退回原文;改成只採用可靠位置的標點。
+- **2026-10-21 v2:改成單一 App。** 發現 VoiceInk 內建的 VoiceInk Refine 就是 App 內的 MLX 語言模型引擎,讓它載入 Breeze2 即可,拿掉 LM Studio、Python 腳本、背景伺服器。見 [../investigations/2026-10-21-single-app-via-refine.md](../investigations/2026-10-21-single-app-via-refine.md)、[../plan/2026-10-21-v2-single-app.md](../plan/2026-10-21-v2-single-app.md)。
+- **2026-10-21 範例一定要用多輪對話。** 範例寫在系統指示裡時,16 句有 7 句模型改寫或回答問題;XPC 只能傳一段字串,所以把範例包成 JSON 由引擎展開。
+- **2026-10-21 模型閒置 5 分鐘才卸載。** 原作者寫死 10 秒,短句來不及在錄音期間載入,閒置後第一句要多等約 2 秒。
+- **2026-10-21 用公開 fork、不回饋上游、照自己的慣例。** GitHub 規定公開專案的 fork 只能公開。文件繁中、commit 訊息英文。v1 的完整紀錄(含實際聽寫的測試數據)留在私人 repo `voiceink-zhtw-lmstudio`(標籤 `v1-two-apps`)。
+
+## 目前進度
+
+- v2 完成並在 M1 Pro 32GB 上使用中。
+- 下一步:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。

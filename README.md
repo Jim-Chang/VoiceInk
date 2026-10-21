@@ -1,109 +1,55 @@
-<div align="center">
-  <img src="VoiceInk/Assets.xcassets/AppIcon.appiconset/256-mac.png" width="180" height="180" />
-  <h1>VoiceInk</h1>
-  <p>Voice to text app for macOS to transcribe what you say to text almost instantly</p>
+# VoiceInk 繁中版
 
-  [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-  ![Platform](https://img.shields.io/badge/platform-macOS%2015.0%2B-brightgreen)
-  [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Beingpax/VoiceInk)](https://github.com/Beingpax/VoiceInk/releases)
-  ![GitHub all releases](https://img.shields.io/github/downloads/Beingpax/VoiceInk/total)
-  ![GitHub stars](https://img.shields.io/github/stars/Beingpax/VoiceInk?style=social)
-  <p>
-    <a href="https://tryvoiceink.com">Website</a> •
-    <a href="https://www.youtube.com/@tryvoiceink">YouTube</a>
-  </p>
+在 Mac 上用語音輸入**台灣繁體中文**:全部在本機執行、自動補標點、只有一個 App。
 
-  <a href="https://tryvoiceink.com">
-    <img src="https://img.shields.io/badge/Download%20Now-Latest%20Version-blue?style=for-the-badge&logo=apple" alt="Download VoiceInk" width="250"/>
-  </a>
-</div>
+這是 [Beingpax/VoiceInk](https://github.com/Beingpax/VoiceInk)(開源的 macOS 聽寫 App,GPLv3)的 fork,我們的修改都在 `zhtw` 分支:
 
----
+- **語音辨識**:聯發科 [Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25),針對台灣華語和中英夾雜,直接輸出繁體。
+- **補標點**:聯發科 [Breeze2-3B](https://huggingface.co/MediaTek-Research/Llama-Breeze2-3B-Instruct),跑在 VoiceInk 內建的「VoiceInk Refine」引擎裡。**只把標點插回原文,一個字都不改**;模型就算吐出簡體或改寫句子,也不會出現在結果裡。
+- 模型已載入時,補標點約 0.8 秒(M1 Pro);用完 5 分鐘沒再用就卸載,釋放約 2GB 記憶體。
 
-VoiceInk is a native macOS application that transcribes what you say to text almost instantly. You can find all the information and download the app from [here](https://tryvoiceink.com). 
+架構、決策和各種踩過的坑:[docs/architecture/README.md](docs/architecture/README.md)。
 
-![VoiceInk Mac App](https://github.com/user-attachments/assets/12367379-83e7-48a6-b52c-4488a6a04bba)
+## 安裝
 
-After dedicating the past 5 months to developing this app, I've decided to open source it for the greater good. 
+需求:Apple Silicon、16GB 以上記憶體、macOS 15 以上、Xcode(App Store 安裝並打開過一次)、Homebrew。
 
-My goal is to make it **the most efficient and privacy-focused voice-to-text solution for macOS** that is a joy to use. While the source code is now open for experienced developers to build and contribute, purchasing a license helps support continued development and gives you access to automatic updates, priority support, and upcoming features.
-
-## Features
-
-- 🎙️ **Accurate Transcription**: Local AI models that transcribe your voice to text with 99% accuracy, almost instantly
-- 🔒 **Privacy First**: 100% offline processing ensures your data never leaves your device
-- ⚡ **Modes**: Intelligent app detection automatically applies your perfect pre-configured settings based on the app/ URL you're on
-- 🧠 **Context Aware**: Smart AI that understands your screen content and adapts to the context
-- 🎯 **Global Shortcuts**: Configurable keyboard or mouse shortcuts for quick recording and push-to-talk functionality
-- 📝 **Personal Dictionary**: Train the AI to understand your unique terminology with custom words, industry terms, and smart text replacements
-- 🔄 **Smart Modes**: Instantly switch between AI-powered modes optimized for different writing styles and contexts
-- 🤖 **AI Assistant**: Built-in voice assistant mode for a quick chatGPT like conversational assistant
-
-## Get Started
-
-### Download
-Get the latest version with a free trial from [tryvoiceink.com](https://tryvoiceink.com). Your purchase helps me work on VoiceInk full-time and continuously improve it with new features and updates.
-
-#### Homebrew
-Alternatively, you can install VoiceInk via `brew`:
-
-```shell
-brew install --cask voiceink
+```bash
+git clone -b zhtw https://github.com/Jim-Chang/VoiceInk.git ~/Documents/koding_work/VoiceInk
+cd ~/Documents/koding_work/VoiceInk
+scripts/setup.sh
 ```
 
-### Build from Source
-As an open-source project, you can build VoiceInk yourself by following the instructions in [BUILDING.md](BUILDING.md). However, the compiled version includes additional benefits like automatic updates, priority support via Discord and email, and helps fund ongoing development.
+`setup.sh` 會裝好 Metal 工具鏈、cmake,build 並安裝 VoiceInk,下載兩個模型(固定版本、核對 SHA256)。做過的步驟會自動跳過。
 
-## Requirements
+接著:
 
-- macOS 15.0 or later
+1. **打開 VoiceInk 完成初始設定**:允許麥克風、輔助使用權限;「模型」那一步選 Local 下載 Parakeet 過關(之後可刪);設定快捷鍵(建議右邊 Option + Hybrid)。
+2. 執行 `scripts/setup.sh configure` 寫入設定(中文提示詞改繁體、預設模式用 Breeze + 中文 + VoiceInk Refine)。
 
-## Documentation
+隨時可以用 `scripts/setup.sh check` 看狀態。
 
-- [Building from Source](BUILDING.md) - Detailed instructions for building the project
-- [Contributing Guidelines](CONTRIBUTING.md) - How to contribute to VoiceInk
-- [Code of Conduct](CODE_OF_CONDUCT.md) - Our community standards
+## 更新
 
-## Contributing
+```bash
+scripts/update.sh          # 合併原作者最新版、build、安裝
+git push origin zhtw
+```
 
-This project is **not accepting pull requests** at this time. You're welcome to fork and modify VoiceInk for your own use.
+## 設定
 
-You can still contribute by:
-- Reporting bugs via [issues](https://github.com/Beingpax/VoiceInk/issues)
-- Suggesting features or enhancements
-- Improving documentation via issues
+```bash
+# 模型閒置多久卸載(秒,預設 300);重開 VoiceInk 生效
+defaults write com.prakashjoshipax.VoiceInk ZhTWRefineKeepWarmSeconds -int 600
+```
 
-For more details, see our [Contributing Guidelines](CONTRIBUTING.md). For build instructions, see our [Building Guide](BUILDING.md).
+## 文件
 
-## License
+- [docs/architecture/README.md](docs/architecture/README.md):目標、指導原則、架構、決策紀錄
+- [docs/development.md](docs/development.md):分支、合併上游、build、測試
+- [docs/investigations/](docs/investigations/):聽寫工具與模型比較、簡體的原因、補標點模型評測、單一 App 的可行性
+- [docs/plan/](docs/plan/):v1(VoiceInk + LM Studio)、v2(單一 App)
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+## 授權
 
-## Support
-
-If you encounter any issues or have questions, please:
-1. Check the existing issues in the GitHub repository
-2. Create a new issue if your problem isn't already reported
-3. Provide as much detail as possible about your environment and the problem
-
-## Acknowledgments
-
-### Core Technology
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - High-performance inference of OpenAI's Whisper model
-- [FluidAudio](https://github.com/FluidInference/FluidAudio) - Used for Parakeet model implementation
-- [TranscribeCpp for Swift](https://github.com/Beingpax/Transcribe-cpp-swift) - SwiftPM distribution of [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp), used for local GGUF transcription models
-- [SenseVoice Small](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) by FunAudioLLM / Alibaba - Multilingual model available under the [FunASR Model Open Source License Agreement](https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE)
-
-### Essential Dependencies
-- [Sparkle](https://github.com/sparkle-project/Sparkle) - Keeping VoiceInk up to date
-- [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts) - User-customizable keyboard shortcuts
-- [LaunchAtLogin](https://github.com/sindresorhus/LaunchAtLogin) - Launch at login functionality
-- [MediaRemoteAdapter](https://github.com/ejbills/mediaremote-adapter) - Media playback control during recording
-- [Zip](https://github.com/marmelroy/Zip) - File compression and decompression utilities
-- [SelectedTextKit](https://github.com/tisfeng/SelectedTextKit) - A modern macOS library for getting selected text
-- [Swift Atomics](https://github.com/apple/swift-atomics) - Low-level atomic operations for thread-safe concurrent programming
-
-
----
-
-Made with ❤️ by Pax
+VoiceInk 和這個 fork 的修改都是 [GPLv3](LICENSE)。Breeze-ASR-25 是 Apache 2.0;Breeze2 是 Llama 3.2 Community License。原作者的說明請見 [Beingpax/VoiceInk](https://github.com/Beingpax/VoiceInk)。
