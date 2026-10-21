@@ -12,8 +12,10 @@
   gap      距離上一次貼上
   asr      語音辨識
   pre      辨識完到開始補標點(字詞替換等)
+  chunks   長的逐字稿分成幾段補標點(其他補標點欄位是各段加總)
   queue    等前一個補標點動作做完
   idle     補標點模型距離上次工作的閒置時間;warm=0 表示這次要重新載入
+  pfx      1 = 用了 prefix cache(固定的指示和範例沒有重讀)
   prep     補標點前確認模型已載入
   prompt   讀入指示和逐字稿(token 數/秒數)
   gen      產生文字(token 數/秒數)
@@ -77,6 +79,8 @@ def group_dictations(events):
             values = dict(FIELDS.findall(message))
             values["_at"] = stamp
             current[name] = values
+            # 長的逐字稿分段補標點,每段各一筆
+            current.setdefault(name + "[]", []).append(values)
     return [d for d in dictations if "asr_start" in d]
 
 
@@ -111,6 +115,25 @@ def number(values, key):
         return None
 
 
+def combined(d, name):
+    """把分段的計時加總;warm/idle/thermal/qos/prefix 用第一段的"""
+    parts = d.get(name + "[]", [])
+    if not parts:
+        return {}
+    out = dict(parts[0])
+    for key in ("queue", "xpc", "prepare", "encode", "prompt", "generate", "total",
+                "promptTokens", "outputTokens"):
+        values = [number(part, key) for part in parts]
+        if all(v is not None for v in values):
+            total = sum(values)
+            out[key] = str(int(total)) if key.endswith("Tokens") else total
+    out["_at"] = parts[-1]["_at"]
+    out["_first_at"] = parts[0]["_at"]
+    out["_first"] = parts[0]
+    out["_chunks"] = len(parts)
+    return out
+
+
 def background_load(samples, start, end):
     if not samples or not start or not end:
         return None, ""
@@ -141,7 +164,7 @@ def main():
     dictations = group_dictations(read_events(args))
     samples = read_load(args.load) if args.load else []
 
-    header = ["time", "rec", "gap", "asr", "pre", "queue", "warm", "idle", "prep",
+    header = ["time", "rec", "gap", "asr", "pre", "chunks", "queue", "warm", "idle", "pfx", "prep",
               "prompt", "gen", "other", "xpc", "paste", "total", "therm", "qos"]
     if samples:
         header += ["bgGPU", "bgTop"]
@@ -149,12 +172,13 @@ def main():
 
     previous_paste = None
     for d in dictations:
-        client = d.get("client-enhance", {})
-        engine = d.get("engine-enhance", {})
+        client = combined(d, "client-enhance")
+        engine = combined(d, "engine-enhance")
         queue, xpc = number(client, "queue"), number(client, "xpc")
         requested_at = None
-        if "_at" in client and queue is not None and xpc is not None:
-            requested_at = client["_at"] - timedelta(seconds=queue + xpc)
+        first = client.get("_first", {})
+        if first and number(first, "queue") is not None and number(first, "xpc") is not None:
+            requested_at = first["_at"] - timedelta(seconds=number(first, "queue") + number(first, "xpc"))
         merge_at = d.get("merge", {}).get("_at") or client.get("_at")
 
         prompt_time, generate_time = number(engine, "prompt"), number(engine, "generate")
@@ -168,9 +192,11 @@ def main():
             fmt(seconds(previous_paste, d["rec_start"]), 5) if previous_paste else fmt(None),
             fmt(seconds(d.get("asr_start"), d.get("asr_end"))),
             fmt(seconds(d.get("asr_end"), requested_at)),
+            fmt(str(client.get("_chunks", "-"))),
             fmt(queue),
             fmt(engine.get("warm", "-")),
             fmt(number(engine, "idle")),
+            fmt(engine.get("prefix", "-")),
             fmt(number(engine, "prepare")),
             f"{engine.get('promptTokens', '-')}/{fmt(prompt_time, 0).strip()}".ljust(8),
             f"{engine.get('outputTokens', '-')}/{fmt(generate_time, 0).strip()}".ljust(8),
