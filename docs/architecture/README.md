@@ -78,4 +78,4 @@ VoiceInk.app
 ## 目前進度
 
 - v2 完成並在 M1 Pro 32GB 上使用中。
-- 下一步:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。
+- 進行中:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。

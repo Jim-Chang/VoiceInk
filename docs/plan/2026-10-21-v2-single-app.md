@@ -49,3 +49,5 @@ sqlite3 -readonly ~/Library/Application\ Support/com.prakashjoshipax.VoiceInk/de
 - 2026-10-21 實際聽寫(LM Studio 已關閉):全部由 `VoiceInk Refine V1` 補上標點、字沒被改。模型已載入時 0.78–0.83 秒;閒置 10 秒被卸載後的第一句 2.65–2.82 秒(錄音 3.9–7 秒,不夠在背景載完)。
 - 2026-10-21 步驟 8:卸載時間改成 5 分鐘(`ZhTWRefineKeepWarmSeconds` 可調)。待確認:隔 1–2 分鐘再講的第一句也是約 0.8 秒。
 - 2026-10-21 步驟 9 完成;fork 推上 GitHub。v1 的私人 repo 改名為 `voiceink-zhtw-lmstudio`。
+- 2026-10-21 驗證步驟 8:閒置 3 分半後的第一句補標點 0.97 秒,模型沒被卸載。但隔 24 秒的第二句要 2.47 秒:XPC 子程序從啟動後一直常駐(約 2.2GB),不是重新載入;用 LM Studio 以同一個模型、指示、temperature 0 重跑這兩句,都只輸出 13–14 個 token 就停,也不是模型多吐字。原因待查,先在 XPC 加計時紀錄(見 [2026-10-21-in-app-model-download.md](2026-10-21-in-app-model-download.md) 步驟 b5)。
+- 2026-10-21 刪掉 LM Studio 裡的 Breeze2 副本(v2 用的是 VoiceInk 自己資料夾裡的那份)。
