@@ -35,8 +35,9 @@ VoiceInk.app
    ├─ 語音辨識:Breeze-ASR-25(whisper.cpp)→ 繁體、沒標點          約 1.2–2 秒
    │    └─ 中文 Whisper 提示詞必須是繁體句子(否則會被帶成簡體)
    ├─ Word Replacements(固定錯字替換)
-   ├─ AI 潤稿 = VoiceInk Refine → Breeze2-3B 建議標點               約 0.8 秒(模型已載入時)
+   ├─ AI 潤稿 = VoiceInk Refine → Breeze2-3B 建議標點               短句約 0.3 秒(模型已載入時)
    │    ├─ 繁中指示 + 多輪範例(包成 JSON,由 XPC 引擎展開)、temperature 0
+   │    ├─ 固定的指示和範例算成 prefix cache,每句只算逐字稿;超過 120 字分段補
    │    └─ ZhTWPunctuation.merge:對齊原文,只取前後字相鄰的標點
    └─ 貼到游標位置
    (模型用完 5 分鐘沒再用就卸載,釋放約 2GB 記憶體)
@@ -56,9 +57,9 @@ VoiceInk.app
 
 | 檔案 | 改了什麼 |
 |---|---|
-| `VoiceInk/Features/ZhTW/ZhTWPunctuation.swift`(新增) | 模型位置、繁中指示、範例、合併邏輯 |
+| `VoiceInk/Features/ZhTW/ZhTWPunctuation.swift`(新增) | 模型位置、繁中指示、範例、合併邏輯、長逐字稿分段 |
 | `VoiceInk/Features/ModelLibrary/State/VoiceInkRefineService.swift` | 有 Breeze2 時改用它的資料夾與指示,輸出後合併;計時紀錄 |
-| `VoiceInkRefineXPC/VoiceInkRefineInferenceEngine.swift` | 範例展開成多輪對話、temperature 0;計時紀錄 |
+| `VoiceInkRefineXPC/VoiceInkRefineInferenceEngine.swift` | 範例展開成多輪對話、temperature 0;prefix cache;換指示不重新載入模型;計時紀錄 |
 | `VoiceInk/Infrastructure/Providers/Enhancement/VoiceInkRefine/VoiceInkRefineXPCClient.swift` | 閒置卸載時間改成可設定,預設 5 分鐘;計時紀錄 |
 | `VoiceInk/Features/ZhTW/ZhTWTiming.swift`、`VoiceInkRefineXPC/ZhTWTiming.swift`(新增) | 延遲調查的計時紀錄(只記時間和數量) |
 | `VoiceInkRefineXPC/VoiceInkRefineXPCService.swift` | 計時紀錄 |
@@ -78,9 +79,12 @@ VoiceInk.app
 - **2026-10-21 用公開 fork、不回饋上游、照自己的慣例。** GitHub 規定公開專案的 fork 只能公開。文件繁中、commit 訊息英文。v1 的完整紀錄(含實際聽寫的測試數據)留在私人 repo `voiceink-zhtw-lmstudio`(標籤 `v1-two-apps`)。
 - **2026-10-21 實際聽寫的實驗資料另開私人 repo `voiceink-zhtw-data`。** v1 的 repo 名稱綁著 LM Studio,不適合放 v2 之後的資料;公開文件只放統計數字。
 - **2026-10-21 修正:補標點偶爾多 1.6 秒是模型被重新載入。** 傳給 XPC 的指示字串由 Swift 字典轉 JSON,key 順序不固定,引擎以為指示換了就卸載重來。改成只產生一次、key 排序。見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。
+- **2026-10-21 換指示不重新載入模型、用 prefix cache。** 模型權重和指示無關;原作者每句重讀約 330 個 token 的固定指示和範例。短句補標點 0.82 → 0.26 秒(91 段實際聽寫離線量測,89 段輸出和原本逐字相同)。
+- **2026-10-21 長的逐字稿分段補標點(每段最多 120 字)。** 太長時 Breeze2 會把整段當成要回應的話,合併對不上就整段沒有標點(582 字的實例)。
+- **2026-10-21 語音辨識維持 Breeze-ASR-25 q8_0 + Metal。** q5、q4 沒變快反而錯更多;Core ML 編碼器更慢且第一次要編譯 14.5 分鐘;只處理實際長度錯誤率約 20%。見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md) 實驗 B。
 
 ## 目前進度
 
 - v2 完成並在 M1 Pro 32GB 上使用中。
-- 進行中:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。實驗 A(補標點偶爾多 1.6 秒)已找到原因並修正;接著做 B(語音辨識加速)、C(補標點加速)。C 的結果可能改變補標點的做法,所以下面的 App 內下載先暫停。
+- 進行中:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。A、B、C 都做完;等使用者的補標點盲測(Breeze2 vs CT-Transformer)決定要不要換補標點模型。結果會影響下面的 App 內下載,所以它先暫停。
 - 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。
