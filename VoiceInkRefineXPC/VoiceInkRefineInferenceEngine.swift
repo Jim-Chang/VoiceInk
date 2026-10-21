@@ -229,7 +229,25 @@ actor VoiceInkRefineInferenceEngine {
             systemPrompt: String,
             maximumOutputTokens: Int
         ) -> ChatSession {
-            ChatSession(
+            // voiceink-zhtw：繁中補標點的範例要用多輪對話餵給模型，並用 temperature 0
+            if let fewShot = Self.decodeFewShot(systemPrompt) {
+                var history: [Chat.Message] = [.system(fewShot.system)]
+                for example in fewShot.examples where example.count == 2 {
+                    history.append(.user(example[0]))
+                    history.append(.assistant(example[1]))
+                }
+                return ChatSession(
+                    container,
+                    history: history,
+                    generateParameters: GenerateParameters(
+                        maxTokens: maximumOutputTokens,
+                        temperature: 0
+                    ),
+                    additionalContext: ["enable_thinking": false]
+                )
+            }
+
+            return ChatSession(
                 container,
                 instructions: systemPrompt,
                 generateParameters: GenerateParameters(
@@ -238,6 +256,20 @@ actor VoiceInkRefineInferenceEngine {
                 ),
                 additionalContext: ["enable_thinking": false]
             )
+        }
+
+        /// 對應 App 端 ZhTWPunctuation.encodedInstructions（XPC 是另一個 target，看不到那個檔案）
+        private struct FewShot: Decodable {
+            let system: String
+            let examples: [[String]]
+        }
+
+        private static let fewShotMarker = "ZHTW_FEW_SHOT_JSON:"
+
+        private static func decodeFewShot(_ systemPrompt: String) -> FewShot? {
+            guard systemPrompt.hasPrefix(fewShotMarker) else { return nil }
+            let json = Data(systemPrompt.dropFirst(fewShotMarker.count).utf8)
+            return try? JSONDecoder().decode(FewShot.self, from: json)
         }
 
         private func waitForPreparationTask(

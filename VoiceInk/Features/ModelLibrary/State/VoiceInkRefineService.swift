@@ -145,11 +145,20 @@ final class VoiceInkRefineService: ObservableObject {
             throw VoiceInkRefineError.modelNotDownloaded
         }
 
-        return try await inferenceClient.enhance(
+        let output = try await inferenceClient.enhance(
             transcript: transcript,
             modelDirectory: snapshotURL,
-            systemPrompt: Self.systemPrompt
+            systemPrompt: activeSystemPrompt
         )
+        // voiceink-zhtw：只採用模型加的標點，字一律用原文的
+        return ZhTWPunctuation.isInstalled
+            ? ZhTWPunctuation.merge(original: transcript, modelOutput: output)
+            : output
+    }
+
+    /// voiceink-zhtw：裝了繁中補標點模型時，改用它的指示
+    private var activeSystemPrompt: String {
+        ZhTWPunctuation.isInstalled ? ZhTWPunctuation.encodedInstructions : Self.systemPrompt
     }
 
     func unloadPreparedModelIfNeeded() async {
@@ -168,7 +177,7 @@ final class VoiceInkRefineService: ObservableObject {
         do {
             try await inferenceClient.prepare(
                 modelDirectory: snapshotURL,
-                systemPrompt: Self.systemPrompt
+                systemPrompt: activeSystemPrompt
             )
         } catch is CancellationError {
         } catch {
@@ -251,6 +260,10 @@ final class VoiceInkRefineService: ObservableObject {
     }
 
     private var snapshotURL: URL? {
+        // voiceink-zhtw：裝了繁中補標點模型就改用它
+        if ZhTWPunctuation.isInstalled {
+            return ZhTWPunctuation.modelDirectory
+        }
         #if arch(arm64)
             return VoiceInkRefineModelDownloader.snapshotDirectory(
                 in: modelRootDirectory,
@@ -263,6 +276,10 @@ final class VoiceInkRefineService: ObservableObject {
     }
 
     private func refreshDownloadedState() {
+        if ZhTWPunctuation.isInstalled {
+            isDownloaded = true
+            return
+        }
         guard let snapshotURL else {
             isDownloaded = false
             return
