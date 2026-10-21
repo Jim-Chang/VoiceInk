@@ -45,14 +45,18 @@ enum ZhTWPunctuation {
     /// 所以把系統指示和範例包成 JSON，由 VoiceInkRefineInferenceEngine 展開。
     static let fewShotMarker = "ZHTW_FEW_SHOT_JSON:"
 
-    static var encodedInstructions: String {
+    ///
+    /// 這個字串每次都必須一模一樣：XPC 引擎拿它判斷模型是不是已經準備好，
+    /// 不一樣就卸載重來（多 1.6 秒）。所以只算一次、key 排序固定
+    /// （Swift 字典每次建立的順序可能不同）。
+    static let encodedInstructions: String = {
         let payload: [String: Any] = [
             "system": systemPrompt,
             "examples": examples.map { [$0.input, $0.output] },
         ]
-        let data = (try? JSONSerialization.data(withJSONObject: payload)) ?? Data()
+        let data = (try? JSONSerialization.data(withJSONObject: payload, options: .sortedKeys)) ?? Data()
         return fewShotMarker + String(decoding: data, as: UTF8.self)
-    }
+    }()
 
     // MARK: - 只把標點插回原文
 
