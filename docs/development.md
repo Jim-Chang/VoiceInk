@@ -7,7 +7,7 @@
 - 這是 [Beingpax/VoiceInk](https://github.com/Beingpax/VoiceInk) 的公開 fork(GitHub 規定公開專案的 fork 只能公開),我們的東西都在 **`zhtw` 分支**。
 - clone 裡 `origin` = [Jim-Chang/VoiceInk](https://github.com/Jim-Chang/VoiceInk)、`upstream` = 原作者。
 - **不會發 PR 回上游**,所以照自己的慣例:文件繁中、放 `docs/`;commit 訊息英文,格式 `area: 說明`(`zhtw:`、`docs:`、`scripts:`),結尾加 `Co-Authored-By`。
-- **公開 repo,不放個人資料**:測試案例和文件裡的例句用自己編的,不放實際聽寫內容;實際聽寫的測試數據留在私人 repo `voiceink-zhtw-lmstudio`。
+- **公開 repo,不放個人資料**:測試案例和文件裡的例句用自己編的,不放實際聽寫內容;實際聽寫的資料放私人 repo:v2 之後的實驗放 `voiceink-zhtw-data`(每個實驗一個資料夾,名稱和 `docs/investigations/` 的文件相同),v1 的補標點評測在 `voiceink-zhtw-lmstudio`。
 
 ## 合併上游更新
 

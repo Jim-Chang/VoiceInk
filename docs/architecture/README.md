@@ -78,4 +78,5 @@ VoiceInk.app
 ## 目前進度
 
 - v2 完成並在 M1 Pro 32GB 上使用中。
-- 進行中:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。
+- 進行中:延遲調查(補標點偶爾多 1.5 秒、整體怎麼變快),見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。結果可能改變補標點的做法,所以下面的 App 內下載先暫停。
+- 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。
