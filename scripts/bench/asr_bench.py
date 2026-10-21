@@ -25,13 +25,20 @@ import time
 TIMING = re.compile(r"whisper_print_timings:\s+(\w[\w ]*?) time =\s+([\d.]+) ms")
 
 
-def run(cli, model, wav, args):
+def audio_ctx(duration):
+    """--audio-ctx dynamic:編碼器只處理錄音實際的長度(多留 1 秒),上限 1500(= 30 秒)"""
+    return min(1500, int((duration + 1) / 30 * 1500) + 1)
+
+
+def run(cli, model, wav, args, duration=None):
     command = [
         cli, "-m", model, "-f", wav, "-l", "zh", "--prompt", args.prompt,
         "-t", "8", "-bs", "1", "-bo", "5", "-tp", "0.2", "-fa", "-nt",
         "--vad", "-vm", args.vad_model, "-vt", "0.5", "-vspd", "250", "-vsd", "100",
         "-vp", "30", "-vo", "0.1",
     ]
+    if args.audio_ctx == "dynamic" and duration is not None:
+        command += ["-ac", str(audio_ctx(duration))]
     started = time.monotonic()
     proc = subprocess.run(command, capture_output=True, text=True)
     wall = time.monotonic() - started
@@ -60,18 +67,26 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--variant", action="append", required=True, help="名稱=模型路徑")
     parser.add_argument("--prompt", default="你好，最近好嗎？見到你很高興。")
+    parser.add_argument("--audio-ctx", choices=["full", "dynamic"], default="full",
+                        help="dynamic = 編碼器只處理錄音實際長度(whisper.cpp 的 audio_ctx)")
+    parser.add_argument("--max-duration", type=float, help="只跑不超過這麼多秒的錄音")
+    parser.add_argument("--limit", type=int, help="只跑前幾段")
     args = parser.parse_args()
 
     items = [i for i in json.load(open(args.input, encoding="utf-8")) if i.get("has_audio")]
+    if args.max_duration:
+        items = [i for i in items if i["duration"] <= args.max_duration]
+    if args.limit:
+        items = items[:args.limit]
     audio = pathlib.Path(args.audio_dir)
     results = {"prompt": args.prompt, "variants": {}}
     for spec in args.variant:
         name, model = spec.split("=", 1)
-        warm = run(args.cli, model, str(audio / f"{items[0]['id']}.wav"), args)
+        warm = run(args.cli, model, str(audio / f"{items[0]['id']}.wav"), args, items[0]["duration"])
         print(f"{name}: 暖機 wall={warm['wall']:.1f}s load={warm['load']} coreml={warm['coreml']}", flush=True)
         rows = {}
         for item in items:
-            rows[item["id"]] = run(args.cli, model, str(audio / f"{item['id']}.wav"), args)
+            rows[item["id"]] = run(args.cli, model, str(audio / f"{item['id']}.wav"), args, item["duration"])
         results["variants"][name] = {"model": model, "warmup": warm, "rows": rows}
         done = [r for r in rows.values() if r["transcribe"] is not None]
         print(f"{name}: {len(done)}/{len(rows)} 段, 辨識合計 {sum(r['transcribe'] for r in done):.1f}s", flush=True)

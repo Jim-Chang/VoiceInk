@@ -54,6 +54,19 @@ python3 -I scripts/timing_report.py --last 1h --load load.tsv
 
 欄位說明在 `scripts/timing_report.py` 開頭。系統紀錄會保留幾天,要更久就把輸出存起來。
 
+## 離線評測工具
+
+`scripts/bench/` 底下是延遲調查用的工具,實際聽寫的內容只放私人 repo `voiceink-zhtw-data`:
+
+| 工具 | 用途 |
+|---|---|
+| `refine-bench.sh` | 編譯 App 裡同一份補標點引擎(`VoiceInkRefineInferenceEngine`、`ZhTWPunctuation`)成命令列工具,離線跑一批逐字稿;可切換 prefix cache / 原作者做法、整段 / 分段。第一次要編 MLX(數分鐘) |
+| `asr_bench.py` | 用 whisper-cli 以 VoiceInk 的參數跑一批錄音,比較 Breeze-ASR-25 各版本的速度和結果 |
+| `punct_ct.py`、`punct-tool.sh` | 專門的標點模型(CT-Transformer,sherpa-onnx)補標點,再用 App 的合併邏輯插回繁體原文 |
+| `sample_load.py` | 每 0.5 秒記 GPU、CPU 負載 |
+
+跑評測時不要同時聽寫,也不要同時跑兩個評測(互搶 GPU,時間會失真)。
+
 ## 測試
 
 - `scripts/test-punctuation.sh`:只編 `ZhTWPunctuation.swift` 加測試程式,跑 `scripts/fixtures/punctuation-cases.json`,不用 build App、不用模型。改合併邏輯時先加案例。
