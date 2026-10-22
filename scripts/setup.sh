@@ -17,7 +17,7 @@ APP_SUPPORT="$HOME/Library/Application Support/com.prakashjoshipax.VoiceInk"
 # 放的位置、檔名、大小、SHA256 要和 App 的 TranscribeCppModelCatalog.teaASR11 相同，App 才會當成已安裝
 TEA_DIR="$APP_SUPPORT/TranscribeCpp/tea-asr-1.1"
 TEA_FILE="TEA-ASR-1.1-Q8_0.gguf"
-TEA_URL="https://huggingface.co/dorajim15/TEA-ASR-1.1-transcribe-cpp/resolve/main/$TEA_FILE"
+TEA_URL="https://huggingface.co/dorajim15/TEA-ASR-1.1-transcribe-cpp/resolve/cc49fae1183e7458411663c2a39de1fdfef8ff7a/$TEA_FILE"
 TEA_SIZE=2184763808
 TEA_SHA256="2e4aeb45c9e7f421d99909e29e49a54e204d70ed0e77bebc3f18a135d78298d0"
 
