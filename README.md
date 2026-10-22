@@ -24,10 +24,12 @@ scripts/setup.sh
 
 接著:
 
-1. **打開 VoiceInk 完成初始設定**:允許麥克風、輔助使用權限;「模型」那一步選 Local 下載 Parakeet 過關(之後可刪);設定快捷鍵(建議右邊 Option + Hybrid)。
+1. **打開 VoiceInk 完成初始設定**:允許麥克風、輔助使用權限;「模型」那一步選 Local,TEA-ASR 1.1 已經由 `setup.sh` 下載好,直接繼續(沒有的話按下載);「AI 服務」那一步可以略過;設定快捷鍵(建議右邊 Option + Hybrid)。
 2. 執行 `scripts/setup.sh configure` 寫入設定:預設模式改名「繁中聽寫(TEA-ASR 1.1)」、用 TEA-ASR + 中文,AI 潤稿、文字格式化、自動學習關掉,聽寫紀錄和錄音保留 3 天。
 
 隨時可以用 `scripts/setup.sh check` 看狀態。
+
+**另一台 Mac 不想裝 Xcode、不想編譯**:把已經裝好的 `/Applications/VoiceInk.app` 複製過去就能用(兩台都要是 Apple Silicon、macOS 15 以上;App 裡已經包含補標點模型和函式庫)。打開後照上面的初始設定走,語音辨識模型在「模型」那一步一鍵下載。用 `scp`、`rsync` 等指令複製不會被 macOS 擋;用 AirDrop 或從網路下載的話 macOS 會擋,要到「系統設定 → 隱私權與安全性」允許打開(這種方式還沒實際測過)。設定用下面的匯出、匯入帶過去。
 
 **從另一台已經設定好的 Mac 帶設定過來**:舊的那台在 VoiceInk「設定」最下面按 Export Settings,新的這台按 Import Settings。會帶模式、快捷鍵、Word Replacements、詞彙表;不含 API key 和模型。中文提示詞已經內建在 App 裡,不用另外設定。
 

@@ -23,6 +23,7 @@ git push origin zhtw
     - 三個辨識流程(`TranscriptionPipeline`、`AudioFileTranscriptionManager`、`AudioFileTranscriptionService`)在去掉頭尾空白之後呼叫 `ZhTWTranscript.clean` 和 `ZhTWPunctuator.punctuate`;上游改了這段流程,要確認呼叫還在、順序還是在段落格式化和 Word Replacements 之前。
     - `VoiceInkEngine` 開始錄音時的 `ZhTWPunctuator.preload()` 和 `cleanupResources` 裡的 `unload()`。
     - `project.pbxproj`:sherpa-onnx 的兩個 dylib、CT 模型和搜尋路徑(ID 都以 `E1C7F001` 開頭),和 whisper.xcframework 的設定放在一起;衝突時保留兩邊。
+  - 初始設定的 6 個檔案(清單見架構文件):「模型」那一步的本機模型換成 TEA,主要是把 `FluidAudioModel`、`FluidAudioModelManager`、`FluidAudioDownloadStatus` 換成 transcribe.cpp 的型別。上游改了初始設定時,確認「Local」還是 TEA、下載得動。
   - 模型清單的三個檔案(`TranscribeCppModelCatalog`、`TranscriptionModelRegistry`、`LanguageDictionary`)各加了一筆 TEA-ASR-1.1,衝突時保留兩邊。上游換了 `Transcribe-cpp-swift` 的版本時,TEA 要重新驗證:GGUF 是用 `856d7c1` 的轉檔程式轉的,新版可能有 #165(依長度調整產生上限)、可以拿掉每 30 秒切段。
 - 合併後先跑 `scripts/test-punctuation.sh`,再實際聽寫一句,用 `python3 -I scripts/timing_report.py --last 10m` 確認有補標點(`punct` 欄位)、語音辨識用的是 TEA。
 
@@ -45,6 +46,14 @@ git push origin zhtw
   產出在 `.local-build/Build/Products/Release/VoiceInk.app`,關掉 VoiceInk 後用 `ditto` 蓋掉 `/Applications/VoiceInk.app`。
 - **簽章**:鑰匙圈裡剛好一張 Apple Development 憑證時,`make local` 會自動用它。簽章固定,重新 build 後麥克風、輔助使用權限不用重給;沒有憑證時用 ad-hoc 簽章,每次 build 後可能要重給。
 - 新的 `.swift` 檔放在 `VoiceInk/` 底下會自動加進 App target(Xcode 的 synchronized group),不用改 `project.pbxproj`。
+
+## 從這台幫另一台 Mac 安裝
+
+另一台要先打開「系統設定 → 一般 → 共享 → 遠端登入」,並在旁邊的 ⓘ 打開「允許遠端使用者完整取用磁碟」(不然連線進去讀寫不了「文件」「下載項目」);在這台跑 `ssh-copy-id 帳號@那台.local`(密碼本人輸入)。之後:
+
+- **複製 App(不用編譯)**:`ditto -c -k --keepParent` 打包 → `scp` → 那台 `ditto -x -k` 解到 `/Applications`。這樣複製不會被 Gatekeeper 擋。
+- **在那台編譯**:`git clone` 後跑 `scripts/setup.sh`;遠端連線的 PATH 沒有 Homebrew,先 `eval "$(/opt/homebrew/bin/brew shellenv)"`;要跑很久,用 `nohup` 放背景。
+- 初始設定(權限、快捷鍵)一定要本人在那台操作;走完後遠端跑 `scripts/setup.sh configure`。
 
 ## 查延遲
 

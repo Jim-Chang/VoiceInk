@@ -114,7 +114,7 @@ install_all() {
     cat <<EOF
   1. 打開 VoiceInk 完成初始設定
      - 允許麥克風、輔助使用權限（macOS 規定要本人點）
-     - 「模型」那一步只能選 Parakeet 或雲端：選 Local 下載 Parakeet 過關，之後可刪
+     - 「模型」那一步選 Local：TEA-ASR 1.1 已經下載好，直接繼續；「AI 服務」那一步可以略過
      - 設定錄音快捷鍵（建議右邊 Option + Hybrid）
   2. 完成後執行：scripts/setup.sh configure
 EOF

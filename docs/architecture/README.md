@@ -81,6 +81,7 @@ VoiceInk.app(全部在同一個行程)
 | `VoiceInk/Features/Recording/Workflows/VoiceInkEngine.swift` | 開始錄音時載入 CT(`ZhTWPunctuator.preload`)、`cleanupResources` 釋放;載入 transcribe.cpp 模型的計時 |
 | `TranscribeCppModelCatalog.swift`、`TranscriptionModelRegistry.swift`、`LanguageDictionary.swift` | 模型清單加 TEA-ASR-1.1(下載位置、大小、SHA256、每 30 秒切段;只給中文) |
 | `VoiceInk/Features/ModelLibrary/Models/TranscriptionModel.swift` | 單一語言的模型顯示那個語言(原作者一律顯示 English) |
+| 初始設定 6 個檔案:`OnboardingCoordinator`、`OnboardingFlowController`、`OnboardingView`、`OnboardingModelScreen`、`OnboardingTranscriptionSetupCard`、`TranscriptionModelDownloadCard` | 「模型」那一步的本機模型從 Parakeet V3 換成 TEA-ASR-1.1:型別從 FluidAudio 換成 transcribe.cpp 的模型和下載狀態,下載用模型頁同一個 `TranscribeCppModelManager`;卡片的說明、圖示、標籤跟著換 |
 | `README.md` | 換成這個 fork 的說明 |
 
 ## 決策紀錄
@@ -105,6 +106,8 @@ VoiceInk.app(全部在同一個行程)
 - **2026-10-22 聽寫紀錄和錄音保留 3 天。** VoiceInk 預設不刪,錄音約每分鐘 1.9MB,一天講 30 分鐘一個月約 1.7GB。用 VoiceInk 內建的「Auto-delete Transcript History」(`configure_voiceink.py` 寫入,也會跟著內建匯出帶走);它也會刪掉沒有對應紀錄的錄音檔。要拿實際聽寫做實驗時,三天內先複製到私人 repo。
 - **2026-10-22 語音辨識決定換成 TEA-ASR-1.1(transcribe.cpp)。** 使用者盲測對 Breeze 7:2、對 TEA-mini 6:2;短句辨識 1.20 → 0.21 秒、長句中位 4.8 → 2.2 秒;原生繁體、台灣用詞,英文詞保留和 Breeze 差不多。代價是聽寫時記憶體 3.7GB(Breeze 2.7GB,聽寫完都會釋放)、幾乎不加標點(照舊接 CT)。用 VoiceInk 已內建的 transcribe.cpp,不加新函式庫;Breeze 留著當備用。見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)、[../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。
 - **2026-10-22 拆掉 Breeze2 補標點(VoiceInk Refine 那條路)。** 那是借用原作者 AI 潤稿的 VoiceInk Refine:裝了 Breeze2 就讓 App 以為 Refine 已下載,實際載入 Breeze2、換成繁中指示、輸出再合併,改了 4 個原作者的檔案。換成 CT 之後已經沒用到,留著反而讓模型清單看起來像裝了 Refine、合併上游時多 4 個檔案要處理。4 個檔案還原成原作者的版本(Refine 回到原作者的功能,要用要自己下載它的模型),`ZhTWPunctuation` 只留合併和 CT 的輸入規則,拿掉分段補標點和 `refine-bench`;這台的 Breeze2(2GB)和備用的 Breeze-ASR-25(1.7GB)也刪掉(Breeze-ASR 還是可以用 `setup.sh --with-breeze` 下載)。預設模式改名「繁中聽寫(TEA-ASR 1.1)」,名稱帶模型名,不會和 Breeze 時代的設定搞混。見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md) 步驟 5。
+
+- **2026-10-22 初始設定的本機模型換成 TEA-ASR-1.1。** 原作者的初始設定只能下載 Parakeet V3(不支援中文)才能繼續,裝新 Mac 時要多下載一個用不到的模型。改成「Local」直接一鍵下載 TEA;語言自動選中文、即時轉錄自動關閉(TEA 不支援),體驗步驟建立的模式就是用 TEA。考慮過的其他做法:讓「模型」那一步可以略過(要另外建一個模式,不然錄音會失敗)、在初始設定裡放完整的模型選單(要搬模型頁的介面,改動大);使用者選了只換成 TEA。也確認了另一台 Mac 不用編譯:把裝好的 App 複製過去就能用(見 README)。新 Mac 第一次聽寫多等約 10 秒(載入 10.4 秒):transcribe.cpp 把 Metal 程式以原始碼放在 App 裡(`GGML_METAL_EMBED_LIBRARY`,115 個 kernel),第一次用時由 macOS 編譯,之後用快取;第二句放開到貼上 1.36 秒。那台 16GB、當時記憶體吃緊(swap 用了 9.8GB),載入 TEA 3.1 秒、CT 5.4 秒(這台約 0.9、0.1 秒),但載入和錄音同時進行,短句才感覺得到。
 
 ## 目前進度
 
