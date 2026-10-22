@@ -57,6 +57,17 @@ VoiceInk.app(全部在同一個行程)
 | 舊的補標點模型(已不使用) | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/ZhTWPunctuation/Llama-Breeze2-3B-Instruct-Text-mlx-4Bit/` | [Breeze2-3B](https://huggingface.co/MediaTek-Research/Llama-Breeze2-3B-Instruct) 的 MLX 4bit 轉檔(2GB);只有模式打開 AI 潤稿、選 VoiceInk Refine 時才會用到。要不要拆掉見 [CT 計畫](../plan/2026-10-22-ct-punctuation.md)步驟 5 |
 | 設定 | UserDefaults 網域 `com.prakashjoshipax.VoiceInk` | 由 `scripts/setup.sh configure` 寫入,或用 VoiceInk 內建的匯出、匯入從另一台帶過來 |
 
+### 相關的 repo
+
+| repo | 公開/私人 | 本機位置 | 放什麼 |
+|---|---|---|---|
+| [Jim-Chang/VoiceInk](https://github.com/Jim-Chang/VoiceInk)(`zhtw` 分支) | 公開 | `~/Documents/koding_work/VoiceInk` | 這個 fork:App 程式、安裝和設定腳本、評測工具、文件。只放程式和統計數字,不放實際聽寫內容 |
+| `Jim-Chang/voiceink-zhtw-data` | 私人 | `~/Documents/koding_work/voiceink-zhtw-data` | 實驗用的實際聽寫資料:錄音、辨識結果、評測輸出、盲測題目和答案。每個實驗一個資料夾,名稱對應這裡的調查文件或計畫 |
+| `Jim-Chang/voiceink-zhtw-lmstudio` | 私人 | `~/Documents/koding_work/voiceink-zhtw-lmstudio` | v1(VoiceInk + LM Studio 兩個 App)的封存,標籤 `v1-two-apps`,含當時的評測資料。不再更新 |
+| [dorajim15/TEA-ASR-1.1-transcribe-cpp](https://huggingface.co/dorajim15/TEA-ASR-1.1-transcribe-cpp)(Hugging Face) | 公開 | — | 語音辨識模型 TEA-ASR-1.1 轉成 transcribe.cpp 的 GGUF(2.18GB)。App 的下載按鈕和 `setup.sh` 從這裡下載,固定 commit 和 SHA256 |
+
+不是我們的、但會用到:[Beingpax/VoiceInk](https://github.com/Beingpax/VoiceInk)(原作者,`update.sh` 從這裡合併更新,不推東西過去);build 時下載的 sherpa-onnx 和 CT 模型([k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 的 release)、whisper.cpp;備用的 Breeze-ASR-25 模型(Hugging Face)。
+
 ### 修改了原作者的哪些檔案
 
 | 檔案 | 改了什麼 |
