@@ -90,5 +90,6 @@ VoiceInk.app
 
 - v2 完成並在 M1 Pro 32GB 上使用中。
 - 完成:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。
+- 完成、待決定:換語音辨識模型的調查。TEA-ASR-1.1(transcribe.cpp,VoiceInk 已內建)使用者盲測 7:2 勝 Breeze、辨識快 2–6 倍,但記憶體多約 1GB、沒有標點(要接 CT);換不換、換哪一個由使用者決定。見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)。
 - 進行中:補標點換成 CT-Transformer,見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
 - 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。換完 CT 再接著做,步驟 b 拿掉。
