@@ -57,7 +57,7 @@ configured()    {
 import plistlib, json, sys
 p = plistlib.loads(sys.stdin.buffer.read())
 m = next(x for x in json.loads(p["modeConfigurationsV2"]) if x.get("isDefault"))
-sys.exit(0 if m.get("selectedTranscriptionModelName") == "tea-asr-1.1" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") and not m.get("isTextFormattingEnabled") and p.get("IsTranscriptionCleanupEnabled") and p.get("TranscriptionRetentionMinutes") == 4320 else 1)' 2>/dev/null
+sys.exit(0 if m.get("selectedTranscriptionModelName") == "tea-asr-1.1" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") and not m.get("isTextFormattingEnabled") and p.get("IsTranscriptionCleanupEnabled") and p.get("TranscriptionRetentionMinutes") == 4320 and p.get("IsAutoLearnDictionaryEnabled") is False else 1)' 2>/dev/null
 }
 
 check() {

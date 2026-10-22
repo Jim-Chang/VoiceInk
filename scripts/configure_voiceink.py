@@ -14,6 +14,10 @@ VoiceInk 必須先關掉（setup.sh configure 會處理），否則它結束時�
   - IsTranscriptionCleanupEnabled、TranscriptionRetentionMinutes
                               聽寫紀錄和錄音保留 3 天就自動刪除（歷史紀錄視窗的
                               「Auto-delete Transcript History」）；沒有對應紀錄的錄音檔也會被刪
+  - IsAutoLearnDictionaryEnabled
+                              關掉「自動學習」：它要用 AI 模型整理你改過的字，本機沒有合適的模型，
+                              而且讀不到 Claude 的輸入框；順便清掉失敗紀錄
+  - localCLICommandTemplate    v1 的補標點腳本（voiceink-zhtw/punct/punct.py）已經不在，清掉
 
 用法：/usr/bin/python3 configure_voiceink.py [--dry-run]
 """
@@ -68,6 +72,20 @@ def main():
             prefs[key] = value
             changes.append(f"{key} → {value}")
 
+    if prefs.get("IsAutoLearnDictionaryEnabled", True):
+        prefs["IsAutoLearnDictionaryEnabled"] = False
+        changes.append("IsAutoLearnDictionaryEnabled → False")
+    # defaults import 只會新增、覆蓋，不會刪掉 key，要刪的另外用 defaults delete
+    removals = []
+    failure_keys = ["AutoLearnDictionaryFailureMessage", "AutoLearnDictionaryFailureAcknowledged"]
+    if prefs.get("AutoLearnDictionaryHasFailure") or any(k in prefs for k in failure_keys):
+        prefs["AutoLearnDictionaryHasFailure"] = False
+        removals += [k for k in failure_keys if k in prefs]
+        changes.append("清掉自動學習的失敗紀錄")
+    if "voiceink-zhtw/punct/punct.py" in prefs.get("localCLICommandTemplate", ""):
+        removals.append("localCLICommandTemplate")
+        changes.append("清掉指向 v1 補標點腳本的 Local CLI 指令")
+
     if not changes:
         print("VoiceInk 設定已經是最新的，沒有要改的。")
         return
@@ -80,6 +98,8 @@ def main():
         plistlib.dump(prefs, f, fmt=plistlib.FMT_BINARY)
         f.flush()
         subprocess.run(["defaults", "import", DOMAIN, f.name], check=True)
+    for key in removals:
+        subprocess.run(["defaults", "delete", DOMAIN, key], check=True)
     print("VoiceInk 設定已寫入。")
 
 
