@@ -366,10 +366,11 @@ final class OnboardingCoordinator: ObservableObject {
         return onboardingProviderOptions.first ?? .groq
     }
 
-    var requiredTranscriptionModel: FluidAudioModel? {
+    // voiceink-zhtw：初始設定的本機模型換成 TEA-ASR（原作者是 Parakeet V3，不支援中文）
+    var requiredTranscriptionModel: TranscribeCppModel? {
         TranscriptionModelRegistry.models
-            .compactMap { $0 as? FluidAudioModel }
-            .first { $0.name == "parakeet-tdt-0.6b-v3" }
+            .compactMap { $0 as? TranscribeCppModel }
+            .first { $0.name == TranscribeCppModelCatalog.teaASR11.modelName }
     }
 
     func selectedOnboardingTranscriptionProviderKeyBinding() -> Binding<String> {
@@ -398,9 +399,9 @@ final class OnboardingCoordinator: ObservableObject {
         )
     }
 
-    func isTranscriptionModelDownloaded(using modelManager: FluidAudioModelManager) -> Bool {
+    func isTranscriptionModelDownloaded(using modelManager: TranscribeCppModelManager) -> Bool {
         guard let requiredTranscriptionModel else { return false }
-        return modelManager.isFluidAudioModelDownloaded(requiredTranscriptionModel)
+        return modelManager.isModelDownloaded(requiredTranscriptionModel)
     }
 
     func isTranscriptionSetupReady(isTranscriptionModelDownloaded: Bool) -> Bool {

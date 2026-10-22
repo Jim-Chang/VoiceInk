@@ -3,7 +3,8 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Binding var hasCompletedOnboardingV2: Bool
-    @EnvironmentObject var fluidAudioModelManager: FluidAudioModelManager
+    // voiceink-zhtw：本機模型換成 TEA-ASR，下載狀態看 transcribe.cpp 的模型管理
+    @ObservedObject private var transcribeCppModelManager = TranscribeCppModelManager.shared
     @EnvironmentObject var transcriptionModelManager: TranscriptionModelManager
     @EnvironmentObject var aiService: AIService
     @EnvironmentObject var enhancementService: AIEnhancementService
@@ -12,7 +13,7 @@ struct OnboardingView: View {
 
     var body: some View {
         let isTranscriptionModelDownloaded = coordinator.isTranscriptionModelDownloaded(
-            using: fluidAudioModelManager
+            using: transcribeCppModelManager
         )
         let isTranscriptionSetupReady = coordinator.isTranscriptionSetupReady(
             isTranscriptionModelDownloaded: isTranscriptionModelDownloaded
@@ -58,21 +59,21 @@ struct OnboardingView: View {
                         selectedProviderKey: coordinator.selectedOnboardingTranscriptionProviderKeyBinding(),
                         isLocalDownloaded: isTranscriptionModelDownloaded,
                         isLocalDownloading: coordinator.requiredTranscriptionModel.map {
-                            fluidAudioModelManager.isFluidAudioModelDownloading($0)
+                            transcribeCppModelManager.isModelDownloading($0)
                         } ?? false,
                         localDownloadStatus: coordinator.requiredTranscriptionModel.flatMap {
-                            fluidAudioModelManager.downloadStatus(for: $0)
+                            transcribeCppModelManager.downloadStatus(for: $0)
                         },
                         isSetupReady: isTranscriptionSetupReady,
                         onSelectSetupKind: coordinator.flow.selectOnboardingTranscriptionSetup,
                         onDownload: {
                             coordinator.flow.downloadTranscriptionModel(
                                 $0,
-                                modelManager: fluidAudioModelManager
+                                modelManager: transcribeCppModelManager
                             )
                         },
                         onCancelDownload: {
-                            fluidAudioModelManager.cancelDownload($0)
+                            transcribeCppModelManager.cancelDownload($0)
                         },
                         onVerificationChanged: coordinator.flow.refreshTranscriptionSetupVerification,
                         onBack: coordinator.flow.goToMicrophoneStep,

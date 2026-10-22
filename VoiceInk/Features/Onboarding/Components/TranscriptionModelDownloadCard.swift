@@ -1,10 +1,11 @@
 import SwiftUI
 
 struct TranscriptionModelDownloadCard: View {
-    let model: FluidAudioModel
+    // voiceink-zhtw：本機模型換成 TEA-ASR（transcribe.cpp），說明和標籤跟著換
+    let model: TranscribeCppModel
     let isDownloaded: Bool
     let isDownloading: Bool
-    let status: FluidAudioDownloadStatus?
+    let status: TranscribeCppDownloadStatus?
     let onDownload: () -> Void
     let onCancel: () -> Void
 
@@ -31,7 +32,7 @@ struct TranscriptionModelDownloadCard: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(AppTheme.Text.primary)
 
-                    Text("Fast multilingual transcription that runs locally on Mac.")
+                    Text(verbatim: model.description)
                         .font(.system(size: 12))
                         .foregroundColor(AppTheme.Text.secondary)
                         .lineLimit(1)
@@ -60,18 +61,17 @@ struct TranscriptionModelDownloadCard: View {
     }
 
     private var modelLogo: some View {
-        Image("nvidia-logo")
-            .resizable()
-            .scaledToFit()
-            .frame(width: 34, height: 28)
+        Image(systemName: "waveform")
+            .font(.system(size: 22, weight: .medium))
+            .foregroundColor(AppTheme.Text.secondary)
             .frame(width: 38, height: 38)
-            .accessibilityLabel(Text(verbatim: "NVIDIA"))
+            .accessibilityHidden(true)
     }
 
     private var modelMetadata: some View {
         HStack(spacing: 6) {
             metadataPill(model.size)
-            localizedMetadataPill("25+ languages")
+            metadataPill("繁體中文")
             localizedMetadataPill("Local")
         }
     }
@@ -94,7 +94,7 @@ struct TranscriptionModelDownloadCard: View {
             .background(Capsule().fill(AppTheme.Surface.subtle))
     }
 
-    private func progressPanel(_ status: FluidAudioDownloadStatus) -> some View {
+    private func progressPanel(_ status: TranscribeCppDownloadStatus) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(status.message)

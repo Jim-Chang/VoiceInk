@@ -305,13 +305,13 @@ final class OnboardingFlowController {
     }
 
     func downloadTranscriptionModel(
-        _ model: FluidAudioModel,
-        modelManager: FluidAudioModelManager
+        _ model: TranscribeCppModel,
+        modelManager: TranscribeCppModelManager
     ) {
         guard coordinator.requiredPermissionsGranted,
             coordinator.hasSelectedOnboardingMicrophone,
-            !modelManager.isFluidAudioModelDownloaded(model),
-            !modelManager.isFluidAudioModelDownloading(model)
+            !modelManager.isModelDownloaded(model),
+            !modelManager.isModelDownloading(model)
         else {
             return
         }
