@@ -82,11 +82,11 @@ VoiceInk.app
 - **2026-10-21 換指示不重新載入模型、用 prefix cache。** 模型權重和指示無關;原作者每句重讀約 330 個 token 的固定指示和範例。短句補標點 0.82 → 0.26 秒(91 段實際聽寫離線量測,89 段輸出和原本逐字相同)。
 - **2026-10-21 長的逐字稿分段補標點(每段最多 120 字)。** 太長時 Breeze2 會把整段當成要回應的話,合併對不上就整段沒有標點(582 字的實例)。
 - **2026-10-21 語音辨識維持 Breeze-ASR-25 q8_0 + Metal。** q5、q4 沒變快反而錯更多;Core ML 編碼器更慢且第一次要編譯 14.5 分鐘;只處理實際長度錯誤率約 20%。見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md) 實驗 B。
-- **2026-10-22 補標點換成 CT-Transformer int8(sherpa-onnx)。** 使用者盲測 15 題:CT 8 題較好、Breeze2 3 題、差不多 4 題;每段 2–35 毫秒(Breeze2 0.26–2.7 秒)、模型 75MB、只用 CPU、結構上不會改字或答非所問。在 App 行程內用 sherpa-onnx 跑,辨識完直接補,不再經過 AI 潤稿。先做基礎架構(模型用腳本放 Application Support);模型內建或 App 內下載、Breeze2 要不要留著備用,之後再決定。見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
+- **2026-10-22 補標點換成 CT-Transformer int8(sherpa-onnx)。** 使用者盲測 15 題:CT 8 題較好、Breeze2 3 題、差不多 4 題;每段 2–35 毫秒(Breeze2 0.26–2.7 秒)、模型 75MB、只用 CPU、結構上不會改字或答非所問。在 App 行程內用 sherpa-onnx 跑,辨識完直接補,不再經過 AI 潤稿。模型內建進 App、不加開關(辨識結果有中文字、沒有句號才補)。Breeze2 要不要留著備用,之後再決定。見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
 
 ## 目前進度
 
 - v2 完成並在 M1 Pro 32GB 上使用中。
 - 完成:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。
 - 進行中:補標點換成 CT-Transformer,見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
-- 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。換完 CT 再接著做,步驟 b 要改寫。
+- 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。換完 CT 再接著做,步驟 b 拿掉。
