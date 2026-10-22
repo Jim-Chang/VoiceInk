@@ -28,8 +28,10 @@
   - 原文有零星的逗號等標點時,先拿掉再給模型判斷,合併時保留原文的標點、不重複加。
 - **CT 一定會在結尾補上句號或問號**,單講一個「好」會變成「好。」。Breeze2 也一樣。
 - **出錯就貼原文。** 模型載入失敗時,每次開 App 跳一次通知,說「暫時不補標點」,之後聽寫照常貼沒標點的原文,不會卡住。
-- **速度**:補標點從短句約 0.3–0.5 秒、長句中位 2.7 秒,變成幾毫秒到幾十毫秒。錄音開始時不再載入模型、不和語音辨識搶 GPU,閒置 5 分鐘後第一句也不會變慢。
+- **速度**:補標點從短句約 0.3–0.5 秒、長句中位 2.7 秒,變成幾毫秒到幾十毫秒。不和語音辨識搶 GPU,閒置 5 分鐘後第一句也不會變慢。
+- **記憶體**:和語音辨識模型一樣用完就放。開始錄音時載入(約 0.14 秒,藏在講話時間裡),聽寫結束就釋放;App 閒著時不佔記憶體(載入時約 250MB)。
 - **紀錄**:紀錄裡的「原文」就是有標點的版本,不會另外出現 AI 潤稿的結果。要沒標點的原文時,把標點拿掉就是(合併只插標點、不改字)。
+- **模式的「文字格式化」關掉。** 它是原作者給英文設計的(`ParagraphFormatter`):句子之間用空格接起來,每約 50 個詞空一行分段。以前補標點在它後面,它拿到沒標點的文字,什麼都沒做;現在補標點在前面,中文句號後面會多一個空格。`configure_voiceink.py` 會把它關掉,效果和以前一樣。
 - **要關掉時**(查問題用):`defaults write com.prakashjoshipax.VoiceInk ZhTWPunctuationEnabled -bool false`,重新聽寫就生效。以後真的需要開關,放在模式設定裡「文字格式化」旁邊(VoiceInk 放類似設定的地方)。
 
 ## 設計
@@ -47,7 +49,6 @@
 為什麼不放在 AI 潤稿裡:
 
 - 補標點是辨識的一部分,不是潤稿。放在 AI 潤稿裡,模式要開 AI 潤稿、選 Provider 和提示詞,VoiceInk Refine 還限定 Apple Silicon + 16GB;CT 都不需要。
-- 段落格式化要靠句號分段,先有標點才分得出來。
 - 之後如果另外開 AI 潤稿(例如雲端模型改寫),拿到的是有標點的文字。
 
 ### 怎麼執行
@@ -55,7 +56,7 @@
 - 新增 `VoiceInk/Features/ZhTW/ZhTWPunctuator.swift`:一個 actor,包 sherpa-onnx 的 C API(`SherpaOnnxCreateOfflinePunctuation`、`SherpaOfflinePunctuationAddPunct`、`SherpaOfflinePunctuationFreeText`)。專案用 synchronized folders,新的 Swift 檔放進資料夾就會加入專案。
 - 步驟:繁體原文 → 拿掉原有標點 → ICU `Traditional-Simplified` 轉簡體(字數變了就用原文,和評測一樣)→ CT → `ZhTWPunctuation.merge(original:modelOutput:)` 把標點插回繁體原文。
 - 不分段:CT 的實作本來就會切成小段,帶著前一段的尾巴往下算。評測裡 582 字那段正常。
-- App 啟動後在背景載入(約 0.2 秒),之後常駐不卸載。第一次聽寫時還沒載完就等它。步驟 2 量記憶體,太大再考慮閒置卸載。
+- 開始錄音時在背景載入(`VoiceInkEngine` 裡原作者準備模型的地方),聽寫結束時釋放(`VoiceInkEngine.cleanupResources`,語音辨識模型也在這裡釋放)。補標點時還沒載入就先載入。匯入音檔、在紀錄裡重新辨識沒有「聽寫結束」,補完就釋放。
 - CPU、2 個執行緒。用 actor,`@MainActor` 的聽寫流程不會卡住主執行緒。
 - 計時:`ZhTWTiming` 加一筆 `punct chars= load= model= merge= total=`(只有數字),`scripts/timing_report.py` 加一欄。
 
@@ -131,3 +132,11 @@ scripts/setup.sh check        # 安裝狀態
 - 2026-10-22 寫 plan。SHA256:`sherpa-onnx-v1.13.8-osx-arm64-shared-no-tts-lib.tar.bz2` 是 `f3e0cbd86cc3f38dad30c97921b40e9a8bcc6f2c943777eb76ad77176993e417`,`c-api.h`(v1.13.8)是 `2a1b95084be8fd1deb3228fcad2fd3f7f0258b64582f7402281ec174c7b7f4ce`,模型壓縮檔是 `c0d5aa5f8eeb686032345e180bedf39319dc2e0556781c6264bcadba8328a6e1`(和 release 的 `checksum.txt`、評測用的那份相同),解開後的 `model.int8.onnx` 是 `65a3fb9f5ad7bfb96bf69e0dc4481df97f6ee60513c1d94ce981ba6effd524b1`。
 - 2026-10-22 範圍:使用者在另一個對話決定「先把基礎架構做好」;Breeze2 要不要留著備用列為待決定。
 - 2026-10-22 使用者同意模型內建進 App。補充使用者體驗:不加開關,看辨識結果有沒有中文字、有沒有句號決定要不要補。用 sherpa-onnx 1.13.8 實測:「git push」「OK」會被補成「git push。」「OK。」,所以沒有中文字時不補;原文已有逗號時模型會再補一個(「好的，，」),所以先拿掉原有標點再給模型。
+- 2026-10-22 步驟 1–3 完成(commit `31416a5`、`25d3ab3`),裝到這台,模式的 AI 潤稿已關掉。
+  - Xcode 嵌入 dylib 沒問題,不用改靜態版。App 裡兩個 dylib 都用同一張 Apple Development 憑證重新簽名,`codesign --verify --deep --strict` 通過;App 從 159MB 變成 261MB。
+  - 離線核對:`scripts/bench/punct-ct.sh` 用 App 裡同一份 Swift 程式跑 91 段,和評測的 `C-ct-merged-int8.json` 逐字相同 91/91。
+  - 速度(2 執行緒,只算補標點):短句中位 2.0 毫秒(最大 2.7)、中 6.5 毫秒(最大 17.2)、長 29.5 毫秒(最大 97)。載入 0.11–0.14 秒。
+  - 記憶體:模型載入後常駐約 250MB(工具本身的 footprint 253MB),比預估的 100MB 大。載入只要 0.14 秒,要省記憶體可以改成閒置就卸載、開始錄音時再載入。
+  - 判斷要不要補、給模型的版本(拿掉全形標點、轉簡體)放在 `ZhTWPunctuation`,`scripts/test-punctuation.sh` 加了 8 個案例,23/23 通過。
+- 2026-10-22 使用者決定補標點模型和語音辨識模型一樣用完就放(原本 App 啟動時載入、常駐約 250MB)。量到的組成:模型和計算空間約 88MB、27 萬詞的查詢表約 33MB、載入時用過但記憶體管理器沒還給系統的約 124MB(試過 `malloc_zone_pressure_relief`,收不回來)。改完後 App 閒著時 footprint 180MB(常駐版是 343MB)。啟動時不再載入,`AppDelegate` 的改動拿掉;改在 `VoiceInkEngine` 開始錄音時載入、`cleanupResources` 釋放。
+- 2026-10-22 實測發現句號後面多一個空格(「了解。␣所以…」):模式開著「文字格式化」,`ParagraphFormatter` 用空格接句子。以前它拿到的是沒標點的文字,所以沒作用。使用者選擇把它關掉(另一個選項是改成適合中文、保留自動分段,要改原作者的程式);`configure_voiceink.py` 加上 `isTextFormattingEnabled: false`,`setup.sh check` 也檢查。這台已經套用。

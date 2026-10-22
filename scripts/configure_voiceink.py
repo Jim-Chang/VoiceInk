@@ -1,13 +1,15 @@
 #!/usr/bin/python3
-"""把 VoiceInk 設定成「Breeze 繁中辨識 + VoiceInk Refine（Breeze2）補標點」。可重複執行。
+"""把 VoiceInk 設定成「Breeze 繁中辨識 + 辨識完直接補標點（CT-Transformer）」。可重複執行。
 
 VoiceInk 必須先關掉（setup.sh configure 會處理），否則它結束時會把設定蓋回去。
 需要先完成 VoiceInk 的初始設定，讓它建立第一個模式（Mode）。
 
 會改的設定（UserDefaults 網域 com.prakashjoshipax.VoiceInk）：
-  - CustomLanguagePrompts.zh  中文的 Whisper 提示詞；內建的是簡體，會把 Breeze 帶成簡體
-  - modeConfigurationsV2      預設模式：Breeze 模型、中文、AI 潤稿用 VoiceInk Refine
-                              （裝了 ZhTWPunctuation 模型時，Refine 就是繁中補標點）
+  - CustomLanguagePrompts.zh  中文的 Whisper 提示詞：只在舊設定是原作者的簡體句子時改掉
+                              （這個 fork 的 App 內建預設已經是繁體，見 WhisperPrompt.swift）
+  - modeConfigurationsV2      預設模式：Breeze 模型、中文、AI 潤稿關掉、文字格式化關掉
+                              （補標點在辨識完就做了，見 ZhTWPunctuator，不靠 AI 潤稿；
+                              文字格式化是給英文的，會在中文句號後面加空格、自動分段）
 
 用法：/usr/bin/python3 configure_voiceink.py [--dry-run]
 """
@@ -21,7 +23,7 @@ import tempfile
 DOMAIN = "com.prakashjoshipax.VoiceInk"
 ASR_MODEL = "ggml-breeze-asr-25-q8_0"
 SIMPLIFIED_DEFAULT_ZH_PROMPT = "你好，最近好吗？见到你很高兴。"
-ZH_PROMPT = "你好，最近好嗎？今天用 Claude Code 測試語音輸入和標點符號，順便看一下 VoiceInk 的設定。"
+ZH_PROMPT = "你好，最近好嗎？見到你很高興。"
 
 
 def main():
@@ -43,9 +45,8 @@ def main():
     wanted = {
         "selectedTranscriptionModelName": ASR_MODEL,
         "selectedLanguage": "zh",
-        "isAIEnhancementEnabled": True,
-        "selectedAIProvider": "VoiceInk Refine",
-        "selectedAIModel": "VoiceInk Refine V1",
+        "isAIEnhancementEnabled": False,
+        "isTextFormattingEnabled": False,
         "useScreenCapture": False,
     }
     for key, value in wanted.items():

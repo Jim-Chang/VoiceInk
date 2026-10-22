@@ -48,7 +48,9 @@ func fakeModel(_ piece: String) -> String {
     return out
 }
 
+var checks = 0
 func check(_ name: String, _ got: String, _ expected: String) {
+    checks += 1
     if got == expected {
         print("  ✓ \(name)")
     } else {
@@ -70,6 +72,19 @@ check("分段:模型每段都答非所問時,原文一字不漏", failed, longTe
 let short = try await ZhTWPunctuation.punctuate("好了沒問題") { _ in "好了，沒問題。" }
 check("短句不分段", short, "好了，沒問題。")
 
-let total = cases.count + 3
+// MARK: - CT-Transformer 的輸入
+
+check("沒有中文字不補(英文指令)", "\(ZhTWPunctuation.needsPunctuation("git push"))", "false")
+check("沒有中文字不補(只有 OK)", "\(ZhTWPunctuation.needsPunctuation("OK"))", "false")
+check("有中文字要補", "\(ZhTWPunctuation.needsPunctuation("這個 API 有問題我們先用 fallback"))", "true")
+check("已經有句號不補(辨識模型自己會加)", "\(ZhTWPunctuation.needsPunctuation("好了，沒問題。"))", "false")
+check("半形的點不算句號(小數、檔名)", "\(ZhTWPunctuation.needsPunctuation("右轉 59.5 度執行 setup.sh"))", "true")
+check("給模型的版本:拿掉全形標點、轉簡體", ZhTWPunctuation.modelInput(for: "好的，我知道了你什麼時候來"), "好的我知道了你什么时候来")
+check("給模型的版本:半形的點和英文不動", ZhTWPunctuation.modelInput(for: "右轉 59.5 度執行 setup.sh"), "右转 59.5 度执行 setup.sh")
+check("原文已有的逗號保留、不重複加",
+      ZhTWPunctuation.merge(original: "好的，我知道了你什麼時候來", modelOutput: "好的，我知道了。你什么时候来？"),
+      "好的，我知道了。你什麼時候來？")
+
+let total = cases.count + checks
 print("\(total - failures)/\(total) 通過")
 exit(failures == 0 ? 0 : 1)

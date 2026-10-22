@@ -127,6 +127,8 @@ class TranscriptionPipeline {
                 text = processedText
             }
 
+            text = await ZhTWPunctuator.shared.punctuate(text)
+
             let formattingConfiguration = resolveFormattingConfiguration()
             let resolvedEnhancementConfiguration = enhancementConfiguration()
             let resolvedOutputConfiguration = outputConfiguration()

@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E1C7F0012FB0000000000004 /* libsherpa-onnx-c-api.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = E1C7F0012FB0000000000001 /* libsherpa-onnx-c-api.dylib */; };
+		E1C7F0012FB0000000000005 /* libsherpa-onnx-c-api.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E1C7F0012FB0000000000001 /* libsherpa-onnx-c-api.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		E1C7F0012FB0000000000006 /* libonnxruntime.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E1C7F0012FB0000000000002 /* libonnxruntime.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		E1C7F0012FB0000000000007 /* sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 in Resources */ = {isa = PBXBuildFile; fileRef = E1C7F0012FB0000000000003 /* sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 */; };
 		E1342C1F2EB4844800CED8A2 /* Atomics in Frameworks */ = {isa = PBXBuildFile; productRef = E1342C1E2EB4844800CED8A2 /* Atomics */; };
 		E13461ED2FD1CCCD005B6A81 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = E13461EC2FD1CCCD005B6A81 /* MarkdownUI */; };
 		E161D4A12F41ECB90086F83D /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E161D4A02F41ECB90086F83D /* CloudKit.framework */; };
@@ -62,6 +66,8 @@
 			dstSubfolderSpec = 10;
 			files = (
 				E1F350122F1D10D600790A2C /* whisper.xcframework in Embed Frameworks */,
+				E1C7F0012FB0000000000005 /* libsherpa-onnx-c-api.dylib in Embed Frameworks */,
+				E1C7F0012FB0000000000006 /* libonnxruntime.dylib in Embed Frameworks */,
 				E1D7EF9A2E35E19B00640029 /* MediaRemoteAdapter in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
@@ -81,6 +87,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E1C7F0012FB0000000000001 /* libsherpa-onnx-c-api.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libsherpa-onnx-c-api.dylib"; path = "$(HOME)/VoiceInk-Dependencies/sherpa-onnx/lib/libsherpa-onnx-c-api.dylib"; sourceTree = "<group>"; };
+		E1C7F0012FB0000000000002 /* libonnxruntime.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libonnxruntime.dylib; path = "$(HOME)/VoiceInk-Dependencies/sherpa-onnx/lib/libonnxruntime.dylib"; sourceTree = "<group>"; };
+		E1C7F0012FB0000000000003 /* sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8"; path = "$(HOME)/VoiceInk-Dependencies/sherpa-onnx/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8"; sourceTree = "<group>"; };
 		E11473B02CBE0F0A00318EE4 /* VoiceInk Dev.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "VoiceInk Dev.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E11473C32CBE0F0B00318EE4 /* VoiceInkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceInkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E11473CD2CBE0F0B00318EE4 /* VoiceInkUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceInkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -145,6 +154,7 @@
 			files = (
 				E1342C1F2EB4844800CED8A2 /* Atomics in Frameworks */,
 				E1F350112F1D10D600790A2C /* whisper.xcframework in Frameworks */,
+				E1C7F0012FB0000000000004 /* libsherpa-onnx-c-api.dylib in Frameworks */,
 				E1D7EF992E35E16C00640029 /* MediaRemoteAdapter in Frameworks */,
 				E161D4A12F41ECB90086F83D /* CloudKit.framework in Frameworks */,
 				E1ADD45F2CC544F100303ECB /* Sparkle in Frameworks */,
@@ -225,6 +235,9 @@
 				E1A0BD052EB1E7B800266859 /* whisper.xcframework */,
 				E1CE28772E4336150082B758 /* whisper.xcframework */,
 				E1B2DCAA2E3DE70A008DFD68 /* whisper.xcframework */,
+				E1C7F0012FB0000000000001 /* libsherpa-onnx-c-api.dylib */,
+				E1C7F0012FB0000000000002 /* libonnxruntime.dylib */,
+				E1C7F0012FB0000000000003 /* sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -417,6 +430,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E1C7F0012FB0000000000007 /* sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -647,6 +661,10 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(HOME)/VoiceInk-Dependencies/sherpa-onnx/lib",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 2.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.prakashjoshipax.VoiceInk.dev;
@@ -654,6 +672,10 @@
 				PRODUCT_NAME = "VoiceInk Dev";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG ENABLE_NATIVE_SPEECH_ANALYZER $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = (
+					"$(inherited)",
+					"$(HOME)/VoiceInk-Dependencies/sherpa-onnx/include",
+				);
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -683,12 +705,20 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(HOME)/VoiceInk-Dependencies/sherpa-onnx/lib",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 2.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.prakashjoshipax.VoiceInk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "ENABLE_NATIVE_SPEECH_ANALYZER $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = (
+					"$(inherited)",
+					"$(HOME)/VoiceInk-Dependencies/sherpa-onnx/include",
+				);
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

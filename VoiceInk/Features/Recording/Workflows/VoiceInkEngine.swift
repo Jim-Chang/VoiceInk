@@ -362,6 +362,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
                             }
 
                             self.scheduleVoiceInkRefinePreparation(for: startID)
+                            ZhTWPunctuator.preload()
 
                             Task { @MainActor [weak self] in
                                 guard let self else { return }
@@ -875,6 +876,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
         await finishRecorderSession()
         await whisperModelManager.cleanupResources()
         await serviceRegistry.cleanup()
+        await ZhTWPunctuator.shared.unload()
         logger.notice("cleanupResources: completed")
     }
 

@@ -58,6 +58,26 @@ enum ZhTWPunctuation {
         return fewShotMarker + String(decoding: data, as: UTF8.self)
     }()
 
+    // MARK: - CT-Transformer 的輸入（ZhTWPunctuator）
+
+    /// 要不要補：有中文字、原文還沒有句號問號驚嘆號（有的話表示辨識模型自己會加標點）。
+    /// 只有英文的不補，不然指令會變成「git push。」。
+    static func needsPunctuation(_ text: String) -> Bool {
+        guard text.unicodeScalars.contains(where: { $0.properties.isIdeographic }) else { return false }
+        return !text.contains { sentenceEnds.contains($0) }
+    }
+
+    /// 給模型看的版本：先拿掉原文零星的全形標點（不然模型會再補一個，例如「好的，，」，
+    /// 合併時保留原文的標點），再整段轉簡體（字數變了就不轉，和評測一樣）。
+    /// 半形的不拿：多半是英文、數字、檔名裡的（59.5、setup.sh）。
+    static func modelInput(for text: String) -> String {
+        let stripped = String(text.filter { !punctuation.contains($0) })
+        guard let converted = stripped.applyingTransform(StringTransform("Traditional-Simplified"), reverse: false),
+            converted.count == stripped.count
+        else { return stripped }
+        return converted
+    }
+
     // MARK: - 長的逐字稿分段
 
     /// 一次給模型太長的逐字稿，它容易把整段當成要回應的話，只回幾句

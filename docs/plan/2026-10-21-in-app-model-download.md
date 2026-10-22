@@ -79,3 +79,4 @@ scripts/setup.sh check        # 安裝狀態
 - 2026-10-21 寫 plan。補標點模型:本機那份和 revision `acaf9551` 的 8 個檔案逐一核對過(大檔比 LFS 的 SHA256,小檔比 git blob id),SHA256 直接寫進程式。Breeze-ASR-25 固定在 revision `36c72609`(2026-05-12),q8_0 的 SHA256 和現在用的一致。
 - 2026-10-21 暫停:先做延遲調查([../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md))。如果補標點改用專門的標點模型,步驟 b 要改寫。
 - 2026-10-22 補標點決定換成 CT-Transformer([2026-10-22-ct-punctuation.md](2026-10-22-ct-punctuation.md)):模型內建進 App,步驟 b 拿掉;步驟 c 的預設模式不再開 AI 潤稿。換完 CT 再接著做,開始前先改寫這份計畫。
+- 2026-10-22 使用者決定:預設值只把中文提示詞寫進 App(步驟 c1 先做了,`WhisperPrompt.languagePrompts["zh"]` 改成這台實際在用、實驗 B 也用的「你好，最近好嗎？見到你很高興。」);其他設定(模式、快捷鍵、Word Replacements)用 VoiceInk 內建的「設定 → Export Settings / Import Settings」帶到另一台,步驟 c2、c3 不做。內建匯出不含中文提示詞(`CustomLanguagePrompts`)、API key 和模型,所以提示詞一定要寫進 App。步驟 d 的 README 要寫匯出、匯入的做法。
