@@ -129,4 +129,5 @@ VoiceInk.app(全部在同一個行程)
 - 完成:TEA 詞彙表的量測(不採用)和 transcribe.cpp 升到 0.4.0,見 [../plan/2026-10-22-tea-vocabulary.md](../plan/2026-10-22-tea-vocabulary.md)。
 - 完成:轉錄音檔的批次辨識,見 [../plan/2026-10-23-tea-batch.md](../plan/2026-10-23-tea-batch.md)。
 - 暫停:邊講邊出字(錄音時在面板顯示預覽,貼出去的文字不變),只查了資料、寫好實驗設計,量測沒跑。見 [../investigations/2026-10-22-streaming-preview.md](../investigations/2026-10-22-streaming-preview.md)。
-- 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。CT、TEA 都換好了,步驟 a1、b、c 大多不用做;要接著做時先改寫這份計畫。
+- 暫停:打包給其他 Mac(步驟 d:打包腳本、README 寫給別人用的安裝方式)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。其他步驟已經做完或用不到:模型在 App 裡下載(模型頁和初始設定都能一鍵下載 TEA)、CT 內建在 App 裡;預設值只把中文提示詞寫進 App,其他設定用內建的匯出、匯入(使用者 2026-10-22 決定)。自己的 Mac 用複製 App 的方式就夠(見 README),要給別人用時再做;沒有付費開發者帳號就不能公證,對方第一次打開要手動允許。
+- 待決定:用 Word Replacements 修 TEA 固定會聽錯的詞(詞彙表不採用之後的建議,見 [../plan/2026-10-22-tea-vocabulary.md](../plan/2026-10-22-tea-vocabulary.md) 的結論)。要做時從實際聽寫整理「錯的寫法 → 正確寫法」草稿給使用者確認。

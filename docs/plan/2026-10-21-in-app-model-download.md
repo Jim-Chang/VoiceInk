@@ -80,3 +80,4 @@ scripts/setup.sh check        # 安裝狀態
 - 2026-10-21 暫停:先做延遲調查([../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md))。如果補標點改用專門的標點模型,步驟 b 要改寫。
 - 2026-10-22 補標點決定換成 CT-Transformer([2026-10-22-ct-punctuation.md](2026-10-22-ct-punctuation.md)):模型內建進 App,步驟 b 拿掉;步驟 c 的預設模式不再開 AI 潤稿。換完 CT 再接著做,開始前先改寫這份計畫。
 - 2026-10-22 使用者決定:預設值只把中文提示詞寫進 App(步驟 c1 先做了,`WhisperPrompt.languagePrompts["zh"]` 改成這台實際在用、實驗 B 也用的「你好，最近好嗎？見到你很高興。」);其他設定(模式、快捷鍵、Word Replacements)用 VoiceInk 內建的「設定 → Export Settings / Import Settings」帶到另一台,步驟 c2、c3 不做。內建匯出不含中文提示詞(`CustomLanguagePrompts`)、API key 和模型,所以提示詞一定要寫進 App。步驟 d 的 README 要寫匯出、匯入的做法。
+- 2026-10-22 現況整理:步驟 b 不用做(CT 內建在 App 裡);a1、a2 換成 TEA 做完了(模型頁和初始設定都能一鍵下載 TEA-ASR 1.1,見 [2026-10-22-tea-asr.md](2026-10-22-tea-asr.md) 和架構文件的決策紀錄);c 只做 c1(見上一筆)。只剩 d:目前用 `ditto` 打包、`scp` 複製到另一台 Mac 的方式已經實際用過兩次(README、`development.md` 有寫),所以 `scripts/package.sh` 和「給別人用」的 README 先不做,要給別人用時再做。
