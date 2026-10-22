@@ -24,7 +24,9 @@ git push origin zhtw
     - `VoiceInkEngine` 開始錄音時的 `ZhTWPunctuator.preload()` 和 `cleanupResources` 裡的 `unload()`。
     - `project.pbxproj`:sherpa-onnx 的兩個 dylib、CT 模型和搜尋路徑(ID 都以 `E1C7F001` 開頭),和 whisper.xcframework 的設定放在一起;衝突時保留兩邊。
   - 初始設定的 6 個檔案(清單見架構文件):「模型」那一步的本機模型換成 TEA,主要是把 `FluidAudioModel`、`FluidAudioModelManager`、`FluidAudioDownloadStatus` 換成 transcribe.cpp 的型別。上游改了初始設定時,確認「Local」還是 TEA、下載得動。
-  - 模型清單的三個檔案(`TranscribeCppModelCatalog`、`TranscriptionModelRegistry`、`LanguageDictionary`)各加了一筆 TEA-ASR-1.1,衝突時保留兩邊。上游換了 `Transcribe-cpp-swift` 的版本時,TEA 要重新驗證:GGUF 是用 `856d7c1` 的轉檔程式轉的,新版可能有 #165(依長度調整產生上限)、可以拿掉每 30 秒切段。
+  - 模型清單的三個檔案(`TranscribeCppModelCatalog`、`TranscriptionModelRegistry`、`LanguageDictionary`)各加了一筆 TEA-ASR-1.1,衝突時保留兩邊。
+  - `OfflineTranscribeCppService`:原作者「每 30 秒切一段、逐段辨識」的迴圈我們改了三處:切段改呼叫 `speechAwareChunks`(超過 30 秒、VAD 開著時用 `TranscribeCppSpeechSegmenter`),每段改呼叫 `runGuarded`(鬼打牆時切小重跑、留已辨識的字),接段時 `ZhTWTranscript.needsSpaceBetween`。上游改了這個迴圈,三處都要接回去;我們加的函式都在 `voiceink-zhtw` 註解底下。
+  - transcribe.cpp 套件(`project.pbxproj` 的 `XCRemoteSwiftPackageReference "Transcribe-cpp-swift"`、`Package.resolved` 的 `transcribe-cpp-swift`):我們改成自己的 [Jim-Chang/Transcribe-cpp-swift](https://github.com/Jim-Chang/Transcribe-cpp-swift) 0.4.0,套件名稱和原作者的一樣。上游也換版本時取比較新的那個;原作者追上 0.4.0 以後可以換回他的網址。換版本後 TEA 要重新驗證(同一批錄音結果和速度不變),第一次聽寫會多等約 10 秒(重新編譯 Metal 程式);xcodebuild 若報 `module.modulemap has been modified`,把 `.local-build` 裡的 `CTranscribe-*.pcm` 移到垃圾桶再 build。
 - 合併後先跑 `scripts/test-punctuation.sh`,再實際聽寫一句,用 `python3 -I scripts/timing_report.py --last 10m` 確認有補標點(`punct` 欄位)、語音辨識用的是 TEA。
 
 ## Build
@@ -67,6 +69,12 @@ python3 -I scripts/timing_report.py --last 1h --load load.tsv
 
 欄位說明在 `scripts/timing_report.py` 開頭。系統紀錄會保留幾天,要更久就把輸出存起來。
 
+轉錄音檔(長錄音)另外有這幾行,也只有時間和數量:`asr-vad`(語音偵測:錄音長度、講話長度、區間數、段數、花多久)、`asr-retry`(哪一段鬼打牆、切小重跑,`at=` 是原始錄音的秒數)、`asr-loop`(切到不到 4 秒還是卡住,留了幾個字)、`asr-chunks`(總段數、重跑幾次、卡住幾段)、`punct ... windows=`(長文字分成幾個視窗補標點)。
+
+```bash
+/usr/bin/log show --last 1h --style compact --predicate 'subsystem == "com.prakashjoshipax.voiceink" AND category == "ZhTWTiming"' | grep -E 'asr-(vad|retry|loop|chunks)|windows='
+```
+
 ## 離線評測工具
 
 `scripts/bench/` 底下是延遲調查用的工具,實際聽寫的內容只放私人 repo `voiceink-zhtw-data`:
@@ -78,9 +86,14 @@ python3 -I scripts/timing_report.py --last 1h --load load.tsv
 | `punct-ct.sh` | 編譯 App 裡同一份 CT 補標點(`ZhTWPunctuator`)成命令列工具,離線跑一批逐字稿;列有 `model` 欄時先照 App 的流程跑 `ZhTWTranscript.clean` |
 | `asr_models_run.sh`、`tc_bench.c`、`asr_models.py`、`tea_prepare.py` | 換語音辨識模型的評測:用 transcribe.cpp 跑一批錄音、統計、盲測;`tea_prepare.py` 整理 TEA-ASR 的 tokenizer 再轉 GGUF(見 [investigations/2026-10-22-asr-models.md](investigations/2026-10-22-asr-models.md)) |
 | `tea_vocab_run.sh`、`tea_vocab_diff.py`(`tc_bench.c --vocabulary-file`) | TEA 詞彙表的量測:同一批錄音跑舊版 transcribe.cpp、新版、新版加詞彙表,找出兩組結果不同的地方、統計時間和記憶體(見 [plan/2026-10-22-tea-vocabulary.md](plan/2026-10-22-tea-vocabulary.md)) |
+| `segment-bench.sh`(`SegmentBench.swift`) | 編譯 App 裡同一份語音偵測切段(`TranscribeCppSpeechSegmenter`),對錄音切段、調參數;只輸出時間和數量,`--wav-dir` 另存切好的每段給 `tc_bench` 辨識 |
+| `vad_compare.py` | 語音偵測切段開、關各用 `tc_bench` 辨識一次,逐段比較(見 [plan/2026-10-22-long-audio-segmentation.md](plan/2026-10-22-long-audio-segmentation.md)) |
+| `punct-ct.sh` 的 `[門檻 長度 重疊]` | 長文字分段補標點的視窗大小,調參數用(預設和 App 相同:400、300、40) |
 | `sample_load.py` | 每 0.5 秒記 GPU、CPU 負載 |
 
 跑評測時不要同時聽寫,也不要同時跑兩個評測(互搶 GPU,時間會失真)。
+
+`tc_bench` 要和 App 用同一份 transcribe.cpp 時,直接連結 build 下載的 xcframework(`.local-build/SourcePackages/artifacts/transcribe-cpp-swift/CTranscribe/TranscribeCpp.xcframework/macos-arm64_x86_64`,編譯指令在 `tc_bench.c` 開頭);`dr_wav.h` 在 transcribe.cpp 原始碼的 `examples/common/`。
 
 ## 測試
 

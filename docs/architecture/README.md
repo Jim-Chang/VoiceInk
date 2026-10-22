@@ -2,7 +2,7 @@
 
 這份文件是這個 fork「想做什麼、已經決定什麼、現在進行到哪裡」的唯一真相來源(single source of truth)。研究細節與來源在 [../investigations/](../investigations/),執行步驟與紀錄在 [../plan/](../plan/),這裡只放結論與決策。
 
-最後更新:2026-10-22(語音辨識換成 TEA-ASR-1.1、補標點換成 CT-Transformer,都在 App 自己的行程裡跑)。
+最後更新:2026-10-22(長音檔:語音偵測切段、鬼打牆的保險、長文字分段補標點;transcribe.cpp 升到 0.4.0)。
 
 ## 專案目標
 
@@ -33,9 +33,11 @@
 VoiceInk.app(全部在同一個行程)
    ├─ 開始錄音時在背景載入:TEA-ASR-1.1(transcribe.cpp)、CT-Transformer(sherpa-onnx,約 0.1 秒)
    ├─ 語音辨識:TEA-ASR-1.1 → 繁體、幾乎沒標點                      短句約 0.2 秒
-   │    └─ 每 30 秒切一段(這版 transcribe.cpp 一次最多產生 256 個 token)
+   │    ├─ 每段最多 30 秒;超過 30 秒的錄音先用語音偵測(Silero)只送講話的部分,在停頓處切段
+   │    └─ 一段鬼打牆沒辨識完 → 切兩半重跑,還不行再切,不到 4 秒就留已辨識的字
    ├─ 整理(ZhTWTranscript.clean):刪私用區字元、簡體專用字轉繁體、拿掉 TEA 零星的標點
    ├─ 補標點(ZhTWPunctuator):有中文字、原文還沒有句號問號才補      幾毫秒
+   │    ├─ 超過 400 字(轉錄音檔)切成重疊的 300 字視窗逐段送,再接回
    │    ├─ 繁轉簡(只給模型看)→ CT-Transformer int8(CPU)
    │    └─ ZhTWPunctuation.merge:標點插回繁體原文
    ├─ Word Replacements(固定錯字替換)
@@ -72,15 +74,18 @@ VoiceInk.app(全部在同一個行程)
 | 檔案 | 改了什麼 |
 |---|---|
 | `VoiceInk/Features/ZhTW/ZhTWPunctuation.swift`(新增) | 合併邏輯;CT 的輸入規則(`needsPunctuation`、`modelInput`) |
-| `VoiceInk/Features/ZhTW/ZhTWPunctuator.swift`(新增) | CT 補標點:包 sherpa-onnx 的 C API、開始錄音時載入、聽寫結束釋放、計時紀錄 |
+| `VoiceInk/Features/ZhTW/ZhTWPunctuator.swift`(新增) | CT 補標點:包 sherpa-onnx 的 C API、開始錄音時載入、聽寫結束釋放、長文字分段送(`ZhTWPunctuation.windows`、`stitch`)、計時紀錄 |
 | `VoiceInk.xcodeproj/project.pbxproj` | 連結、嵌入 sherpa-onnx 的兩個 dylib,CT 模型放進 Resources,標頭檔和函式庫的搜尋路徑 |
 | `VoiceInk/Features/ZhTW/ZhTWTiming.swift`(新增) | 延遲調查的計時紀錄(只記時間和數量) |
 | `VoiceInk/Infrastructure/Providers/Transcription/Whisper/WhisperPrompt.swift` | 中文提示詞的預設值改成繁體 |
-| `VoiceInk/Features/ZhTW/ZhTWTranscript.swift`、`ZhTWSimplifiedOnly.swift`(新增) | 辨識完、補標點前整理:刪私用區字元、簡體專用字轉繁體、TEA 的零星標點拿掉;對照表由 `scripts/gen-zhtw-simplified.py` 產生 |
+| `VoiceInk/Features/ZhTW/ZhTWTranscript.swift`、`ZhTWSimplifiedOnly.swift`(新增) | 辨識完、補標點前整理:刪私用區字元、簡體專用字轉繁體、TEA 的零星標點拿掉;縮掉鬼打牆留下的結尾重複、接段補空格的判斷;對照表由 `scripts/gen-zhtw-simplified.py` 產生 |
 | `TranscriptionPipeline.swift`、`AudioFileTranscriptionManager.swift`、`AudioFileTranscriptionService.swift` | 辨識完、去掉頭尾空白之後:`ZhTWTranscript.clean` 再 `ZhTWPunctuator.punctuate`;`TranscriptionPipeline` 另記辨識計時 |
 | `VoiceInk/Features/Recording/Workflows/VoiceInkEngine.swift` | 開始錄音時載入 CT(`ZhTWPunctuator.preload`)、`cleanupResources` 釋放;載入 transcribe.cpp 模型的計時 |
 | `TranscribeCppModelCatalog.swift`、`TranscriptionModelRegistry.swift`、`LanguageDictionary.swift` | 模型清單加 TEA-ASR-1.1(下載位置、大小、SHA256、每 30 秒切段;只給中文) |
 | `VoiceInk/Features/ModelLibrary/Models/TranscriptionModel.swift` | 單一語言的模型顯示那個語言(原作者一律顯示 English) |
+| `VoiceInk/Infrastructure/Providers/Transcription/TranscribeCpp/OfflineTranscribeCppService.swift` | 長音檔:超過 30 秒、VAD 設定開著時先用語音偵測切段;一段鬼打牆(`isTruncated`)不讓整個檔案失敗,切兩半重跑、還不行再切,最後留已辨識的字、縮掉結尾的重複;接段時英文、數字之間補空格;計時紀錄。transcribe.cpp 0.4 的 `capabilities` 要 `try` |
+| `VoiceInk/Infrastructure/Providers/Transcription/TranscribeCpp/TranscribeCppSpeechSegmenter.swift`(新增) | 用 App 內建 whisper.cpp 的 Silero 語音偵測找出講話的區間,接成最多 30 秒的段,記住每段來自原始錄音的哪裡 |
+| `VoiceInk.xcodeproj/project.pbxproj`、`Package.resolved` 的 `transcribe-cpp-swift` | 套件從原作者的 `Beingpax/Transcribe-cpp-swift` 0.2.0-dev.856d7c1 換成我們的 [Jim-Chang/Transcribe-cpp-swift](https://github.com/Jim-Chang/Transcribe-cpp-swift) 0.4.0(官方 v0.4.0 的 Swift 原始碼原封不動,原生程式直接下載官方 release、核對 SHA256) |
 | 初始設定 6 個檔案:`OnboardingCoordinator`、`OnboardingFlowController`、`OnboardingView`、`OnboardingModelScreen`、`OnboardingTranscriptionSetupCard`、`TranscriptionModelDownloadCard` | 「模型」那一步的本機模型從 Parakeet V3 換成 TEA-ASR-1.1:型別從 FluidAudio 換成 transcribe.cpp 的模型和下載狀態,下載用模型頁同一個 `TranscribeCppModelManager`;卡片的說明、圖示、標籤跟著換 |
 | `README.md` | 換成這個 fork 的說明 |
 
@@ -108,6 +113,8 @@ VoiceInk.app(全部在同一個行程)
 - **2026-10-22 拆掉 Breeze2 補標點(VoiceInk Refine 那條路)。** 那是借用原作者 AI 潤稿的 VoiceInk Refine:裝了 Breeze2 就讓 App 以為 Refine 已下載,實際載入 Breeze2、換成繁中指示、輸出再合併,改了 4 個原作者的檔案。換成 CT 之後已經沒用到,留著反而讓模型清單看起來像裝了 Refine、合併上游時多 4 個檔案要處理。4 個檔案還原成原作者的版本(Refine 回到原作者的功能,要用要自己下載它的模型),`ZhTWPunctuation` 只留合併和 CT 的輸入規則,拿掉分段補標點和 `refine-bench`;這台的 Breeze2(2GB)和備用的 Breeze-ASR-25(1.7GB)也刪掉(Breeze-ASR 還是可以用 `setup.sh --with-breeze` 下載)。預設模式改名「繁中聽寫(TEA-ASR 1.1)」,名稱帶模型名,不會和 Breeze 時代的設定搞混。見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md) 步驟 5。
 
 - **2026-10-22 初始設定的本機模型換成 TEA-ASR-1.1。** 原作者的初始設定只能下載 Parakeet V3(不支援中文)才能繼續,裝新 Mac 時要多下載一個用不到的模型。改成「Local」直接一鍵下載 TEA;語言自動選中文、即時轉錄自動關閉(TEA 不支援),體驗步驟建立的模式就是用 TEA。考慮過的其他做法:讓「模型」那一步可以略過(要另外建一個模式,不然錄音會失敗)、在初始設定裡放完整的模型選單(要搬模型頁的介面,改動大);使用者選了只換成 TEA。也確認了另一台 Mac 不用編譯:把裝好的 App 複製過去就能用(見 README)。新 Mac 第一次聽寫多等約 10 秒(載入 10.4 秒):transcribe.cpp 把 Metal 程式以原始碼放在 App 裡(`GGML_METAL_EMBED_LIBRARY`,115 個 kernel),第一次用時由 macOS 編譯,之後用快取;第二句放開到貼上 1.36 秒。那台 16GB、當時記憶體吃緊(swap 用了 9.8GB),載入 TEA 3.1 秒、CT 5.4 秒(這台約 0.9、0.1 秒),但載入和錄音同時進行,短句才感覺得到。
+- **2026-10-22 長音檔:語音偵測切段、鬼打牆的保險、長文字分段補標點。** 用「轉錄音檔」轉 1 小時 43 分的會議錄音時,某一段讓 TEA 同一句重複到產生上限,整個檔案失敗。改成:一段沒辨識完就切兩半重跑、還不行再切(到不到 4 秒為止),最後只留已辨識的字、縮掉結尾的重複,文字裡不加記號、只在紀錄寫時間位置;超過 30 秒的錄音先用 App 內建的 Silero 語音偵測只送講話的部分(跟著原作者的 VAD 設定;短句聽寫比較過沒有變好,所以不用);補標點超過 400 字時切成重疊的 300 字視窗(整段送時 3 萬字要 103 秒)。同一段會議錄音:原本失敗 → 轉完約 6 分半(語音偵測 20 秒、辨識 370 秒、補標點 5 秒),沒有卡住的段。見 [../plan/2026-10-22-long-audio-segmentation.md](../plan/2026-10-22-long-audio-segmentation.md)。
+- **2026-10-22 TEA 不加詞彙表;transcribe.cpp 升到 0.4.0。** transcribe.cpp 0.3 起可以給模型一份專有名詞清單。218 段實際聽寫量測:清單詞修好 16 處,但和清單無關的地方變壞 34、變好 23,短句多 92 毫秒,事先定的標準沒過,不採用(固定聽錯的詞可以用 Word Replacements 改)。只升級到 0.4.0 則 218 段有 217 段逐字相同、速度和記憶體一樣,又多了「偵測到重複就提早停」,所以升級。原作者的套件還在 0.2,照他的做法自己做一份可安裝的副本 [Jim-Chang/Transcribe-cpp-swift](https://github.com/Jim-Chang/Transcribe-cpp-swift)(官方 Swift 原始碼原封不動,原生程式直接下載官方 release、核對 SHA256);原作者追上以後換回他的。見 [../plan/2026-10-22-tea-vocabulary.md](../plan/2026-10-22-tea-vocabulary.md)。
 
 ## 目前進度
 
@@ -116,5 +123,7 @@ VoiceInk.app(全部在同一個行程)
 - 完成:換語音辨識模型的調查,見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)。
 - 進行中:語音辨識換成 TEA-ASR-1.1,見 [../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。2026-10-22 起這台改用 TEA(步驟 1–4 完成,步驟 5 實際使用中);README 等文件(步驟 6)用過再改。
 - 完成:補標點換成 CT-Transformer、拆掉 Breeze2 補標點,見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
+- 完成:長音檔(語音偵測切段、鬼打牆的保險、長文字分段補標點),見 [../plan/2026-10-22-long-audio-segmentation.md](../plan/2026-10-22-long-audio-segmentation.md)。
+- 完成:TEA 詞彙表的量測(不採用)和 transcribe.cpp 升到 0.4.0,見 [../plan/2026-10-22-tea-vocabulary.md](../plan/2026-10-22-tea-vocabulary.md)。
 - 暫停:邊講邊出字(錄音時在面板顯示預覽,貼出去的文字不變),只查了資料、寫好實驗設計,量測沒跑。見 [../investigations/2026-10-22-streaming-preview.md](../investigations/2026-10-22-streaming-preview.md)。
 - 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。CT、TEA 都換好了,步驟 a1、b、c 大多不用做;要接著做時先改寫這份計畫。

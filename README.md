@@ -4,7 +4,7 @@
 
 這是 [Beingpax/VoiceInk](https://github.com/Beingpax/VoiceInk)(開源的 macOS 聽寫 App,GPLv3)的 fork,我們的修改都在 `zhtw` 分支:
 
-- **語音辨識**:[TEA-ASR-1.1](https://huggingface.co/JacobLinCool/TEA-ASR-1.1)(以 Qwen3-ASR-1.7B 微調的台灣華語模型),原生繁體、台灣用詞、中英夾雜。用 VoiceInk 內建的 transcribe.cpp 執行,短句辨識約 0.2 秒(M1 Pro)。
+- **語音辨識**:[TEA-ASR-1.1](https://huggingface.co/JacobLinCool/TEA-ASR-1.1)(以 Qwen3-ASR-1.7B 微調的台灣華語模型),原生繁體、台灣用詞、中英夾雜。用 transcribe.cpp 0.4.0 執行,短句辨識約 0.2 秒(M1 Pro)。
 - **補標點**:[CT-Transformer](https://modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch)(FunASR 的中英文標點模型,int8 版跟著 App 一起裝),用 sherpa-onnx 在 App 裡以 CPU 執行,每段幾毫秒。**只把標點插回原文,一個字都不改。**
 - 兩個模型都是開始錄音時載入、聽寫結束就釋放,App 閒著時不佔記憶體。
 
@@ -33,6 +33,15 @@ scripts/setup.sh
 
 **從另一台已經設定好的 Mac 帶設定過來**:舊的那台在 VoiceInk「設定」最下面按 Export Settings,新的這台按 Import Settings。會帶模式、快捷鍵、Word Replacements、詞彙表;不含 API key 和模型。中文提示詞已經內建在 App 裡,不用另外設定。
 
+## 轉錄音檔
+
+VoiceInk 左邊的「Transcribe」可以把錄音檔或影片(WAV、MP3、M4A、MP4 等)拖進去轉成文字,用目前的模式(TEA-ASR + 補標點),結果在「History」。
+
+- 超過 30 秒的錄音會先用語音偵測只送有人講話的部分、在停頓處切段(跟著模型設定進階區塊的「Voice Activity Detection (VAD)」,預設開)。1 小時 43 分的會議錄音在 M1 Pro 約 6 分半轉完。
+- 不分講者、沒有時間碼。很小聲、離麥克風很遠的人可能被當成靜音。
+- 多人同時講話、音樂的地方,模型偶爾會「鬼打牆」(同一句一直重複)。App 會切小重跑,真的不行就只留已辨識的字,系統紀錄會寫出是錄音的第幾秒(查法見 [docs/development.md](docs/development.md#查延遲))。
+- 轉的時候會用 GPU,同時聽寫會慢一點。
+
 ## 更新
 
 ```bash
@@ -52,7 +61,7 @@ defaults write com.prakashjoshipax.VoiceInk ZhTWPunctuationEnabled -bool false
 - [docs/architecture/README.md](docs/architecture/README.md):目標、指導原則、架構、決策紀錄
 - [docs/development.md](docs/development.md):分支、合併上游、build、測試
 - [docs/investigations/](docs/investigations/):聽寫工具與模型比較、簡體的原因、補標點模型評測、單一 App 的可行性、在 App 裡下載模型、延遲、換語音辨識模型
-- [docs/plan/](docs/plan/):v1(VoiceInk + LM Studio)、v2(單一 App)、在 App 裡下載模型與打包、補標點換成 CT-Transformer、語音辨識換成 TEA-ASR
+- [docs/plan/](docs/plan/):v1(VoiceInk + LM Studio)、v2(單一 App)、在 App 裡下載模型與打包、補標點換成 CT-Transformer、語音辨識換成 TEA-ASR、TEA 詞彙表(不採用)、長音檔
 
 ## 授權
 
@@ -64,6 +73,7 @@ VoiceInk 和這個 fork 的修改都是 [GPLv3](LICENSE)。原作者的說明請
 |---|---|---|
 | TEA-ASR-1.1 | MIT(底層 Qwen3-ASR-1.7B 是 Apache 2.0) | [JacobLinCool/TEA-ASR-1.1](https://huggingface.co/JacobLinCool/TEA-ASR-1.1),轉成 transcribe.cpp 格式放在 [dorajim15/TEA-ASR-1.1-transcribe-cpp](https://huggingface.co/dorajim15/TEA-ASR-1.1-transcribe-cpp) |
 | CT-Transformer 標點模型 | Apache 2.0(ModelScope 頁面);FunASR 模型授權要求註明來源、保留模型名稱 | 阿里巴巴 FunASR 的 [punc_ct-transformer_zh-cn-common-vocab272727-pytorch](https://modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch),sherpa-onnx 轉成的 `sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8` |
+| transcribe.cpp 0.4.0 | MIT | [handy-computer/transcribe.cpp](https://github.com/handy-computer/transcribe.cpp);Swift 套件是我們照原作者做法放的副本 [Jim-Chang/Transcribe-cpp-swift](https://github.com/Jim-Chang/Transcribe-cpp-swift) |
 | sherpa-onnx | Apache 2.0 | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) |
 | ONNX Runtime | MIT | [microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) |
 | Breeze-ASR-25(選用的備用) | Apache 2.0 | [MediaTek-Research/Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25) |
