@@ -6,8 +6,9 @@ VoiceInk 必須先關掉（setup.sh configure 會處理），否則它結束時�
 
 會改的設定（UserDefaults 網域 com.prakashjoshipax.VoiceInk）：
   - CustomLanguagePrompts.zh  中文的 Whisper 提示詞；內建的是簡體，會把 Breeze 帶成簡體
-  - modeConfigurationsV2      預設模式：Breeze 模型、中文、AI 潤稿關掉
-                              （補標點在辨識完就做了，見 ZhTWPunctuator，不靠 AI 潤稿）
+  - modeConfigurationsV2      預設模式：Breeze 模型、中文、AI 潤稿關掉、文字格式化關掉
+                              （補標點在辨識完就做了，見 ZhTWPunctuator，不靠 AI 潤稿；
+                              文字格式化是給英文的，會在中文句號後面加空格、自動分段）
 
 用法：/usr/bin/python3 configure_voiceink.py [--dry-run]
 """
@@ -44,6 +45,7 @@ def main():
         "selectedTranscriptionModelName": ASR_MODEL,
         "selectedLanguage": "zh",
         "isAIEnhancementEnabled": False,
+        "isTextFormattingEnabled": False,
         "useScreenCapture": False,
     }
     for key, value in wanted.items():

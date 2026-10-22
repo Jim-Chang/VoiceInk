@@ -42,7 +42,7 @@ configured()    {
 import plistlib, json, sys
 p = plistlib.loads(sys.stdin.buffer.read())
 m = next(x for x in json.loads(p["modeConfigurationsV2"]) if x.get("isDefault"))
-sys.exit(0 if m.get("selectedTranscriptionModelName") == "ggml-breeze-asr-25-q8_0" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") else 1)' 2>/dev/null
+sys.exit(0 if m.get("selectedTranscriptionModelName") == "ggml-breeze-asr-25-q8_0" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") and not m.get("isTextFormattingEnabled") else 1)' 2>/dev/null
 }
 
 check() {
