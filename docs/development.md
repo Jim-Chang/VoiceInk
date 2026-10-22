@@ -70,6 +70,7 @@ python3 -I scripts/timing_report.py --last 1h --load load.tsv
 ## 測試
 
 - `scripts/test-punctuation.sh`:只編 `ZhTWPunctuation.swift` 加測試程式,跑 `scripts/fixtures/punctuation-cases.json`,不用 build App、不用模型。改合併邏輯時先加案例。
+- **聽寫紀錄和錄音只留 3 天**(見架構文件的決策紀錄),要做實驗先複製到私人 repo。
 - 實際聽寫的結果在 `~/Library/Application Support/com.prakashjoshipax.VoiceInk/default.store`(SQLite,`ZTRANSCRIPTION` 表):`ZTEXT` 是辨識結果、`ZENHANCEDTEXT` 是補標點後、`ZAIENHANCEMENTMODELNAME`、`ZENHANCEMENTDURATION`、`ZTRANSCRIPTIONDURATION`。查詢指令見 [plan/2026-10-21-v2-single-app.md](plan/2026-10-21-v2-single-app.md#驗證)。
 - VoiceInk 的 log 不會留在系統紀錄裡(`log show` 查不到),要看時間就查上面的資料庫。
 
