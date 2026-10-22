@@ -227,10 +227,10 @@
     {
       "identity" : "transcribe-cpp-swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Beingpax/Transcribe-cpp-swift.git",
+      "location" : "https://github.com/Jim-Chang/Transcribe-cpp-swift.git",
       "state" : {
-        "revision" : "fb1c1ad99e8939a69fcfb613417d9635fb77ef42",
-        "version" : "0.2.0-dev.856d7c1"
+        "revision" : "90169959b6a69b769a7647bded0e76a177cb48ef",
+        "version" : "0.4.0"
       }
     },
     {

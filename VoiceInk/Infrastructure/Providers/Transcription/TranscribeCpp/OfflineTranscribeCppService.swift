@@ -116,7 +116,7 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
         )
         let maximumChunkSeconds = effectiveMaximumChunkSeconds(
             configuredMaximum: artifact.maximumChunkSeconds,
-            capabilitiesMaximumMilliseconds: nativeModel.capabilities.maxAudioMs
+            capabilitiesMaximumMilliseconds: try nativeModel.capabilities.maxAudioMs
         )
         // voiceink-zhtw：VAD 開著時先用語音偵測切段，只送講話的部分（TranscribeCppSpeechSegmenter）
         let chunks = await speechAwareChunks(
@@ -362,9 +362,9 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
     /// 切成兩半重跑的最短段長（4 秒）
     private static let minimumRetrySamples = 4 * 16_000
 
-    /// 一段碰到產生上限（多半是模型鬼打牆，同一句一直重複）時：
+    /// 一段沒辨識完就停下（多半是模型鬼打牆：碰到產生上限，或 transcribe.cpp 0.4 起偵測到重複提早停）時：
     /// 段長 4 秒以上就在中間附近最安靜的地方切成兩半，各跑一次（只切一層，避免一段拖很久）；
-    /// 還是碰到上限、或太短不切，就留已辨識的字、縮掉結尾的重複。其他錯誤和取消照舊往外丟。
+    /// 還是停下、或太短不切，就留已辨識的字、縮掉結尾的重複。其他錯誤和取消照舊往外丟。
     private func runGuarded(
         _ chunk: TranscribeCppSpeechSegmenter.Chunk,
         model: Model,
@@ -375,9 +375,9 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
         let samples = chunk.samples
         do {
             return [try await runChunk(samples, model: model, options: options)]
-        } catch TranscribeError.outputTruncated(_, let partial) {
+        } catch let error as TranscribeError where error.isTruncated {
             guard samples.count >= Self.minimumRetrySamples else {
-                return [salvage(partial, startSample: chunk.startSample, sampleCount: samples.count, stats: &stats)]
+                return [salvage(error.partial, startSample: chunk.startSample, sampleCount: samples.count, stats: &stats)]
             }
             stats.retried += 1
             ZhTWTiming.logger.notice(
@@ -395,9 +395,9 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
                 try Task.checkCancellation()
                 do {
                     results.append(try await runChunk(half, model: model, options: options))
-                } catch TranscribeError.outputTruncated(_, let partial) {
+                } catch let error as TranscribeError where error.isTruncated {
                     let halfStart = chunk.sourcePosition(ofOffset: halfOffset)
-                    results.append(salvage(partial, startSample: halfStart, sampleCount: half.count, stats: &stats))
+                    results.append(salvage(error.partial, startSample: halfStart, sampleCount: half.count, stats: &stats))
                 }
                 halfOffset += half.count
             }
