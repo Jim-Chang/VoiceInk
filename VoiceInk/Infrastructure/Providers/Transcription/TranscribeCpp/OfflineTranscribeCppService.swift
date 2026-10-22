@@ -359,12 +359,14 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
         var truncated = 0
     }
 
-    /// 切成兩半重跑的最短段長（4 秒）
+    /// 再切成兩半重跑的最短段長（4 秒）
     private static let minimumRetrySamples = 4 * 16_000
 
     /// 一段沒辨識完就停下（多半是模型鬼打牆：碰到產生上限，或 transcribe.cpp 0.4 起偵測到重複提早停）時：
-    /// 段長 4 秒以上就在中間附近最安靜的地方切成兩半，各跑一次（只切一層，避免一段拖很久）；
-    /// 還是停下、或太短不切，就留已辨識的字、縮掉結尾的重複。其他錯誤和取消照舊往外丟。
+    /// 段長 4 秒以上就在中間附近最安靜的地方切成兩半各跑一次，哪一半還是停下就再切，切到不到 4 秒為止；
+    /// 不到 4 秒還是停下，就留已辨識的字、縮掉結尾的重複。其他錯誤和取消照舊往外丟。
+    /// 從哪裡開始送會不會卡住幾乎是碰運氣（兩人同時講的地方，起點差一秒結果就不同），換個切法常常就過了；
+    /// 0.4 起偵測到重複一兩秒就停，多試幾次不太花時間；30 秒的一段最多往下切四層。
     private func runGuarded(
         _ chunk: TranscribeCppSpeechSegmenter.Chunk,
         model: Model,
@@ -372,16 +374,37 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
         energyWindowCount: Int,
         stats: inout ChunkGuardStats
     ) async throws -> [(text: String, language: String?)] {
-        let samples = chunk.samples
+        try await runSplittingOnStop(
+            chunk.samples,
+            offset: 0,
+            of: chunk,
+            model: model,
+            options: options,
+            energyWindowCount: energyWindowCount,
+            stats: &stats
+        )
+    }
+
+    /// `samples` 是 `chunk` 從第 `offset` 個樣本開始的一部分（紀錄用來對回原始錄音的位置）。
+    private func runSplittingOnStop(
+        _ samples: [Float],
+        offset: Int,
+        of chunk: TranscribeCppSpeechSegmenter.Chunk,
+        model: Model,
+        options: RunOptions,
+        energyWindowCount: Int,
+        stats: inout ChunkGuardStats
+    ) async throws -> [(text: String, language: String?)] {
         do {
             return [try await runChunk(samples, model: model, options: options)]
         } catch let error as TranscribeError where error.isTruncated {
+            let startSample = chunk.sourcePosition(ofOffset: offset)
             guard samples.count >= Self.minimumRetrySamples else {
-                return [salvage(error.partial, startSample: chunk.startSample, sampleCount: samples.count, stats: &stats)]
+                return [salvage(error.partial, startSample: startSample, sampleCount: samples.count, stats: &stats)]
             }
             stats.retried += 1
             ZhTWTiming.logger.notice(
-                "asr-retry at=\(String(format: "%.1f", Double(chunk.startSample) / 16_000), privacy: .public) length=\(String(format: "%.1f", Double(samples.count) / 16_000), privacy: .public)"
+                "asr-retry at=\(String(format: "%.1f", Double(startSample) / 16_000), privacy: .public) length=\(String(format: "%.1f", Double(samples.count) / 16_000), privacy: .public)"
             )
             // 上限設成原長度的六成、在中間兩成裡找最安靜的地方，剛好切成兩半
             let halves = samples.energyAwareChunks(
@@ -390,15 +413,18 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
                 energyWindowCount: energyWindowCount
             )
             var results: [(text: String, language: String?)] = []
-            var halfOffset = 0
+            var halfOffset = offset
             for half in halves {
                 try Task.checkCancellation()
-                do {
-                    results.append(try await runChunk(half, model: model, options: options))
-                } catch let error as TranscribeError where error.isTruncated {
-                    let halfStart = chunk.sourcePosition(ofOffset: halfOffset)
-                    results.append(salvage(error.partial, startSample: halfStart, sampleCount: half.count, stats: &stats))
-                }
+                results += try await runSplittingOnStop(
+                    half,
+                    offset: halfOffset,
+                    of: chunk,
+                    model: model,
+                    options: options,
+                    energyWindowCount: energyWindowCount,
+                    stats: &stats
+                )
                 halfOffset += half.count
             }
             return results
