@@ -75,6 +75,34 @@ check("接段:數字和英文之間補空格", "\(ZhTWTranscript.needsSpaceBetwe
 check("接段:中文和英文之間不補", "\(ZhTWTranscript.needsSpaceBetween("先看這個", "API 再說"))", "false")
 check("接段:中文和中文之間不補", "\(ZhTWTranscript.needsSpaceBetween("先看這個", "再說"))", "false")
 
+// MARK: - 長文字分段送進 CT(ZhTWPunctuation.windows / stitch)
+
+check("分段:不到一個視窗就整段", "\(ZhTWPunctuation.windows(count: 100))", "[Range(0..<100)]")
+let longWindows = ZhTWPunctuation.windows(count: 700)
+check("分段:從頭蓋到尾、相鄰重疊 40 字",
+      "\(longWindows.first!.lowerBound) \(longWindows.last!.upperBound) \(zip(longWindows, longWindows.dropFirst()).allSatisfy { $0.upperBound - $1.lowerBound == 40 })",
+      "0 700 true")
+
+// 假的模型:照參考答案在視窗裡的字後面加標點;第二種另外在每個視窗結尾多補一個句號(CT 真的會這樣)
+let reference = String(repeating: "今天先看這個 API，然後決定要不要 deploy 到 Cloud Run。好的，我知道了！", count: 12)
+var plain: [Character] = []
+var marksAfter: [Int: String] = [:]
+for ch in reference {
+    if ZhTWPunctuation.punctuation.contains(ch) { marksAfter[plain.count - 1, default: ""].append(ch) } else { plain.append(ch) }
+}
+func fakeModel(_ window: Range<Int>, endingPeriod: Bool) -> String {
+    let text = window.map { String(plain[$0]) + (marksAfter[$0] ?? "") }.joined()
+    return endingPeriod && window.upperBound < plain.count ? text + "。" : text
+}
+let seamWindows = ZhTWPunctuation.windows(
+    count: plain.count, windowing: ZhTWPunctuation.Windowing(threshold: 50, length: 50, overlap: 8))
+check("分段:接回去和整段一樣", ZhTWPunctuation.stitch(input: plain, windows: seamWindows,
+      outputs: seamWindows.map { fakeModel($0, endingPeriod: false) }), reference)
+let stitchedWithEnds = ZhTWPunctuation.stitch(input: plain, windows: seamWindows,
+      outputs: seamWindows.map { fakeModel($0, endingPeriod: true) })
+check("分段:視窗結尾多補的句號不會留下", stitchedWithEnds, reference)
+check("分段:合併回原文", ZhTWPunctuation.merge(original: String(plain), modelOutput: stitchedWithEnds), reference)
+
 let total = cases.count + checks
 print("\(total - failures)/\(total) 通過")
 exit(failures == 0 ? 0 : 1)

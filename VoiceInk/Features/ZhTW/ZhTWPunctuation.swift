@@ -27,6 +27,84 @@ enum ZhTWPunctuation {
 
     private static let sentenceEnds: Set<Character> = Set("。？！")
 
+    // MARK: - 長文字分段送進 CT（ZhTWPunctuator）
+
+    /// 給模型看的文字超過 `threshold` 字就分段送：一次送整段時，時間增加得比字數快很多
+    /// （29,714 字花 103 秒；582 字只要 0.1 秒）。見 docs/plan/2026-10-22-long-audio-segmentation.md 步驟 3b。
+    struct Windowing {
+        var threshold = 400
+        var length = 300
+        var overlap = 40
+        static let standard = Windowing()
+    }
+
+    /// 切成互相重疊的視窗（字的位置）；不超過門檻就整段一個。
+    static func windows(count: Int, windowing: Windowing = .standard) -> [Range<Int>] {
+        let length = windowing.length
+        let overlap = windowing.overlap
+        guard count > windowing.threshold, count > length, overlap < length else { return [0..<count] }
+        var result: [Range<Int>] = []
+        var start = 0
+        while true {
+            let end = min(start + length, count)
+            result.append(start..<end)
+            if end == count { break }
+            start = end - overlap
+        }
+        return result
+    }
+
+    /// 把每個視窗的模型輸出接成一份，給 `merge` 用。重疊的地方各取一半：每個視窗只留離邊緣比較遠的那部分。
+    /// 用「字母、數字、中文字」計數對回輸入的位置，不受標點和空白影響；
+    /// 切點後面緊接的標點算前一個視窗的。
+    static func stitch(input: [Character], windows: [Range<Int>], outputs: [String]) -> String {
+        var result = ""
+        for (index, window) in windows.enumerated() {
+            let isFirst = index == 0
+            let isLast = index == windows.count - 1
+            let from = isFirst ? window.lowerBound : (windows[index - 1].upperBound + window.lowerBound) / 2
+            let to = isLast ? window.upperBound : (window.upperBound + windows[index + 1].lowerBound) / 2
+            let output = Array(outputs[index])
+
+            var start = 0
+            let skip = contentCount(input[window.lowerBound..<from])
+            if skip > 0 {
+                var seen = 0
+                while start < output.count, seen < skip {
+                    if isContent(output[start]) { seen += 1 }
+                    start += 1
+                }
+                while start < output.count, isSeamTrailing(output[start]) { start += 1 }
+            }
+
+            var end = output.count
+            if !isLast {
+                let keep = contentCount(input[from..<to])
+                var kept = 0
+                end = start
+                while end < output.count, kept < keep {
+                    if isContent(output[end]) { kept += 1 }
+                    end += 1
+                }
+                while end < output.count, isSeamTrailing(output[end]) { end += 1 }
+            }
+            if start < end { result.append(contentsOf: output[start..<end]) }
+        }
+        return result
+    }
+
+    private static func contentCount(_ characters: ArraySlice<Character>) -> Int {
+        characters.reduce(0) { $0 + (isContent($1) ? 1 : 0) }
+    }
+
+    private static func isContent(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber
+    }
+
+    private static func isSeamTrailing(_ character: Character) -> Bool {
+        character.isWhitespace || existingPunctuation.contains(character)
+    }
+
     // MARK: - 只把標點插回原文
 
     /// 整句對得上的比例低於這個值（例如模型跑去回答問題）就整句放棄；

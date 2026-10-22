@@ -41,7 +41,12 @@ actor ZhTWPunctuator {
 
     /// 補標點；不需要補、模型載入失敗或出錯時回傳原文。模型還沒載入就先載入。
     /// 不是聽寫的流程（匯入音檔、在紀錄裡重新辨識）沒有聽寫結束的時機，用 `unloadAfterwards` 補完就放。
-    func punctuate(_ text: String, unloadAfterwards: Bool = false) async -> String {
+    /// 長文字（匯入的長音檔）分段送進模型，見 `ZhTWPunctuation.windows`；`windowing` 只給評測工具調。
+    func punctuate(
+        _ text: String,
+        unloadAfterwards: Bool = false,
+        windowing: ZhTWPunctuation.Windowing = .standard
+    ) async -> String {
         defer { if unloadAfterwards { unload() } }
         guard Self.shouldPunctuate(text) else { return text }
         let started = ContinuousClock.now
@@ -52,18 +57,31 @@ actor ZhTWPunctuator {
         }
 
         let modelStarted = ContinuousClock.now
-        let input = ZhTWPunctuation.modelInput(for: text)
-        guard let raw = SherpaOfflinePunctuationAddPunct(punctuation, input) else { return text }
-        let modelOutput = String(cString: raw)
-        SherpaOfflinePunctuationFreeText(raw)
+        let input = Array(ZhTWPunctuation.modelInput(for: text))
+        let windows = ZhTWPunctuation.windows(count: input.count, windowing: windowing)
+        var outputs: [String] = []
+        outputs.reserveCapacity(windows.count)
+        for window in windows {
+            guard let output = Self.addPunctuation(punctuation, to: String(input[window])) else { return text }
+            outputs.append(output)
+        }
+        let modelOutput = windows.count == 1
+            ? outputs[0]
+            : ZhTWPunctuation.stitch(input: input, windows: windows, outputs: outputs)
 
         let mergeStarted = ContinuousClock.now
         let merged = ZhTWPunctuation.merge(original: text, modelOutput: modelOutput)
         let finished = ContinuousClock.now
         ZhTWTiming.logger.notice(
-            "punct chars=\(text.count, privacy: .public) load=\(ZhTWTiming.seconds(loadDuration), privacy: .public) model=\(ZhTWTiming.seconds(mergeStarted - modelStarted), privacy: .public) merge=\(ZhTWTiming.seconds(finished - mergeStarted), privacy: .public) total=\(ZhTWTiming.seconds(finished - started), privacy: .public)"
+            "punct chars=\(text.count, privacy: .public) windows=\(windows.count, privacy: .public) load=\(ZhTWTiming.seconds(loadDuration), privacy: .public) model=\(ZhTWTiming.seconds(mergeStarted - modelStarted), privacy: .public) merge=\(ZhTWTiming.seconds(finished - mergeStarted), privacy: .public) total=\(ZhTWTiming.seconds(finished - started), privacy: .public)"
         )
         return merged
+    }
+
+    private static func addPunctuation(_ punctuation: OpaquePointer, to input: String) -> String? {
+        guard let raw = SherpaOfflinePunctuationAddPunct(punctuation, input) else { return nil }
+        defer { SherpaOfflinePunctuationFreeText(raw) }
+        return String(cString: raw)
     }
 
     /// 載入模型；回傳這次花的時間（已經載入過就是 0）。
