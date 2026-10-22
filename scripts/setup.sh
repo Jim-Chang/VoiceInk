@@ -33,7 +33,8 @@ step() { echo; echo "==> $*"; }
 
 memory_gb()     { echo $(( $(sysctl -n hw.memsize) / 1073741824 )); }
 has_xcode()     { xcodebuild -version > /dev/null 2>&1; }
-has_metal()     { xcrun -f metal > /dev/null 2>&1; }
+# Xcode 26 的 metal 一直都在，工具鏈沒下載時執行會失敗，所以要實際跑一次
+has_metal()     { xcrun metal --version > /dev/null 2>&1; }
 has_app()       { [[ -d /Applications/VoiceInk.app ]]; }
 app_has_zhtw()  { [[ -f /Applications/VoiceInk.app/Contents/Resources/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/model.int8.onnx ]]; }
 has_asr()       { [[ -f "$ASR_DIR/$ASR_FILE" ]]; }
