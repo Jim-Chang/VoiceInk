@@ -123,6 +123,18 @@ enum TranscriptionModelRegistry {
                 publisher: "FunAudioLLM / Alibaba",
                 supportedLanguages: LanguageDictionary.senseVoiceSmall
             ),
+            // voiceink-zhtw：台灣華語的預設語音模型（docs/plan/2026-10-22-tea-asr.md）
+            TranscribeCppModel(
+                name: "tea-asr-1.1",
+                displayName: "TEA-ASR 1.1",
+                description: "台灣華語、繁體輸出，中英夾雜也能辨識",
+                size: "2.18 GB",
+                speed: 0.95,
+                accuracy: 0.95,
+                ramUsage: 3.7,
+                publisher: "TEA-ASR contributors",
+                supportedLanguages: LanguageDictionary.teaASR
+            ),
 
             // Local Models
             WhisperModel(

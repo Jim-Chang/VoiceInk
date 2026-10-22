@@ -94,9 +94,28 @@ enum TranscribeCppModelCatalog {
         boundaryEnergyWindowSamples: 1_600
     )
 
+    // voiceink-zhtw：TEA-ASR-1.1（Qwen3-ASR-1.7B 的台灣華語微調）。原作者只有 safetensors，
+    // 這個 GGUF 是自己用 transcribe.cpp 的轉檔程式轉的（scripts/bench/tea_prepare.py）。
+    // 這版 transcribe.cpp 每次最多產生 256 個 token，所以每 30 秒切一段。
+    // 見 docs/plan/2026-10-22-tea-asr.md。上傳到 Hugging Face 後 revision 改成固定的 commit。
+    static let teaASR11 = TranscribeCppModelArtifact(
+        modelName: "tea-asr-1.1",
+        fileName: "TEA-ASR-1.1-Q8_0.gguf",
+        repository: "dorajim15/TEA-ASR-1.1-transcribe-cpp",
+        repositoryRevision: "main",
+        expectedFileSize: 2_184_763_808,
+        expectedSHA256: "2e4aeb45c9e7f421d99909e29e49a54e204d70ed0e77bebc3f18a135d78298d0",
+        architectureHint: "qwen3_asr",
+        enablesInverseTextNormalization: false,
+        maximumChunkSeconds: 30,
+        boundarySearchSeconds: 3,
+        boundaryEnergyWindowSamples: 1_600
+    )
+
     private static let artifactsByModelName = [
         cohereTranscribe.modelName: cohereTranscribe,
         senseVoiceSmall.modelName: senseVoiceSmall,
+        teaASR11.modelName: teaASR11,
     ]
 
     static func artifact(for modelName: String) -> TranscribeCppModelArtifact? {

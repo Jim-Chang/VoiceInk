@@ -139,6 +139,9 @@ enum LanguageDictionary {
         includesAutoDetect: true
     )
 
+    // voiceink-zhtw：TEA-ASR 只給中文（transcribe.cpp 會變成「language Chinese」，原作者建議一律指定）
+    static let teaASR = forCodes(["zh"])
+
     private static func languages(matching codes: Set<String>) -> [String: String] {
         all.filter { codes.contains($0.key) }
     }
