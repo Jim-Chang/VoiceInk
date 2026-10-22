@@ -2,7 +2,7 @@
 
 這份文件是這個 fork「想做什麼、已經決定什麼、現在進行到哪裡」的唯一真相來源(single source of truth)。研究細節與來源在 [../investigations/](../investigations/),執行步驟與紀錄在 [../plan/](../plan/),這裡只放結論與決策。
 
-最後更新:2026-10-22(決定補標點換成 CT-Transformer;目前程式仍是 v2:補標點由 VoiceInk Refine 的引擎執行)。
+最後更新:2026-10-22(語音辨識換成 TEA-ASR-1.1、補標點換成 CT-Transformer,都在 App 自己的行程裡跑)。
 
 ## 專案目標
 
@@ -13,15 +13,15 @@
 
 ## 非目標
 
-- **邊講邊把字打進輸入框**:VoiceInk 的即時轉錄只把文字顯示在自己的錄音面板,講完才一次貼上;Breeze-ASR-25 屬於 Whisper 類模型,本來就要聽完一段才辨識(見 [../investigations/2026-10-21-dictation-app-and-asr.md](../investigations/2026-10-21-dictation-app-and-asr.md))。真的需要時用 macOS 內建聽寫。
+- **邊講邊把字打進輸入框**:VoiceInk 的即時轉錄只把文字顯示在自己的錄音面板,講完才一次貼上;Breeze-ASR-25 屬於 Whisper 類模型、TEA-ASR 在 transcribe.cpp 也沒有串流,都要聽完一段才辨識(見 [../investigations/2026-10-21-dictation-app-and-asr.md](../investigations/2026-10-21-dictation-app-and-asr.md))。真的需要時用 macOS 內建聽寫。
 - **回饋給原作者**:這個 fork 不會發 PR 回 [Beingpax/VoiceInk](https://github.com/Beingpax/VoiceInk),所以照自己的慣例改(文件、README、腳本),不用為了上游而壓低改動量。但仍會定期合併上游更新(見 [../development.md](../development.md))。
 - **雲端辨識或潤稿服務**、**Intel Mac**、**16GB 以下記憶體的 Mac**(VoiceInk Refine 的限制)。
 
 ## 指導原則
 
-- **繁體由程式保證,不靠模型。** 語言模型只負責「建議標點」;最後輸出的每個字都來自語音辨識的原文(`ZhTWPunctuation.merge`)。模型改字、轉成簡體、改寫句子、跑去回答問題,都不會出現在結果裡。
+- **繁體由程式保證,不靠模型。** 補標點模型只負責「建議標點」;最後輸出的每個字都來自語音辨識的原文(`ZhTWPunctuation.merge`),只有辨識模型漏出的簡體專用字由程式轉成繁體(`ZhTWTranscript.clean`)。模型改字、轉成簡體、改寫句子、跑去回答問題,都不會出現在結果裡。
 - **出錯就貼原文,不卡住。** 模型沒載入、對齊失敗,一律回傳沒標點的原文。
-- **用 VoiceInk 已經有的機制。** 語音辨識用它的 whisper.cpp 模型管理,補標點用它的 VoiceInk Refine(App 內的 MLX 引擎,跑在獨立的 XPC 子程序)。不另外架伺服器、不需要開機自動啟動。
+- **用 VoiceInk 已經有的機制,少改原作者的程式。** 語音辨識用它內建的 transcribe.cpp 和模型下載(Breeze 備用則是 whisper.cpp);補標點是我們加的 sherpa-onnx,但只在辨識完的地方加一行呼叫。不另外架伺服器、不需要開機自動啟動。
 - **模型固定版本、核對 SHA256。** 兩個模型都是社群轉檔,固定在測過的 revision。
 - **用實際的聽寫內容做決策。** 模型選擇、參數調整都先跑測試、留數據(見 [../investigations/2026-10-21-punctuation-model-benchmark.md](../investigations/2026-10-21-punctuation-model-benchmark.md))。
 
@@ -30,17 +30,18 @@
 ```
 按快捷鍵說話
    ↓
-VoiceInk.app
-   ├─ 開始錄音的同時,在 VoiceInkRefineXPC 子程序載入 Breeze2-3B(背景進行)
-   ├─ 語音辨識:Breeze-ASR-25(whisper.cpp)→ 繁體、沒標點          約 1.2–2 秒
-   │    └─ 中文 Whisper 提示詞必須是繁體句子(否則會被帶成簡體)
+VoiceInk.app(全部在同一個行程)
+   ├─ 開始錄音時在背景載入:TEA-ASR-1.1(transcribe.cpp)、CT-Transformer(sherpa-onnx,約 0.1 秒)
+   ├─ 語音辨識:TEA-ASR-1.1 → 繁體、幾乎沒標點                      短句約 0.2 秒
+   │    └─ 每 30 秒切一段(這版 transcribe.cpp 一次最多產生 256 個 token)
+   ├─ 整理(ZhTWTranscript.clean):刪私用區字元、簡體專用字轉繁體、拿掉 TEA 零星的標點
+   ├─ 補標點(ZhTWPunctuator):有中文字、原文還沒有句號問號才補      幾毫秒
+   │    ├─ 繁轉簡(只給模型看)→ CT-Transformer int8(CPU)
+   │    └─ ZhTWPunctuation.merge:標點插回繁體原文
    ├─ Word Replacements(固定錯字替換)
-   ├─ AI 潤稿 = VoiceInk Refine → Breeze2-3B 建議標點               短句約 0.3 秒(模型已載入時)
-   │    ├─ 繁中指示 + 多輪範例(包成 JSON,由 XPC 引擎展開)、temperature 0
-   │    ├─ 固定的指示和範例算成 prefix cache,每句只算逐字稿;超過 120 字分段補
-   │    └─ ZhTWPunctuation.merge:對齊原文,只取前後字相鄰的標點
+   ├─ AI 潤稿、文字格式化:關掉
    └─ 貼到游標位置
-   (模型用完 5 分鐘沒再用就卸載,釋放約 2GB 記憶體)
+   聽寫結束就釋放兩個模型(和原作者處理語音辨識模型的方式一樣)
 ```
 
 ### 元件與位置
@@ -49,16 +50,20 @@ VoiceInk.app
 |---|---|---|
 | VoiceInk.app | `/Applications/VoiceInk.app` | 這個 fork 的 `zhtw` 分支自己 build |
 | whisper.cpp 函式庫 | `~/VoiceInk-Dependencies/` | build 用,Xcode 專案寫死這個路徑,**別刪** |
+| sherpa-onnx 和補標點模型 | `~/VoiceInk-Dependencies/sherpa-onnx/` | build 用,`scripts/deps-sherpa-onnx.sh` 準備(固定 v1.13.8、核對 SHA256)。兩個 dylib(sherpa-onnx C API 3MB、ONNX Runtime 29MB)嵌入 App 的 `Contents/Frameworks/`,CT 模型(75MB)放進 `Contents/Resources/`,所以裝好的 App 不需要這個資料夾 |
 | 語音辨識模型 | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/WhisperModels/ggml-breeze-asr-25-q8_0.bin` | [Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25) 的 whisper.cpp 轉檔(1.7GB);換成 TEA 後當備用 |
 | 語音辨識模型(換成 TEA 後) | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/TranscribeCpp/tea-asr-1.1/TEA-ASR-1.1-Q8_0.gguf` | [TEA-ASR-1.1](https://huggingface.co/JacobLinCool/TEA-ASR-1.1) 自己轉的 transcribe.cpp GGUF(2.18GB),旁邊的 `.TEA-ASR-1.1-Q8_0.gguf.sha256` 讓 App 當成已安裝 |
-| 補標點模型 | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/ZhTWPunctuation/Llama-Breeze2-3B-Instruct-Text-mlx-4Bit/` | [Breeze2-3B](https://huggingface.co/MediaTek-Research/Llama-Breeze2-3B-Instruct) 的 MLX 4bit 轉檔(2GB);資料夾存在時 VoiceInk Refine 就改用它 |
-| 設定 | UserDefaults 網域 `com.prakashjoshipax.VoiceInk` | 由 `scripts/setup.sh configure` 寫入 |
+| 補標點模型 | App 裡的 `Contents/Resources/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/model.int8.onnx` | FunASR 的 CT-Transformer,sherpa-onnx 轉的 int8 版(75MB),跟著 App 一起裝 |
+| 舊的補標點模型(已不使用) | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/ZhTWPunctuation/Llama-Breeze2-3B-Instruct-Text-mlx-4Bit/` | [Breeze2-3B](https://huggingface.co/MediaTek-Research/Llama-Breeze2-3B-Instruct) 的 MLX 4bit 轉檔(2GB);只有模式打開 AI 潤稿、選 VoiceInk Refine 時才會用到。要不要拆掉見 [CT 計畫](../plan/2026-10-22-ct-punctuation.md)步驟 5 |
+| 設定 | UserDefaults 網域 `com.prakashjoshipax.VoiceInk` | 由 `scripts/setup.sh configure` 寫入,或用 VoiceInk 內建的匯出、匯入從另一台帶過來 |
 
 ### 修改了原作者的哪些檔案
 
 | 檔案 | 改了什麼 |
 |---|---|
-| `VoiceInk/Features/ZhTW/ZhTWPunctuation.swift`(新增) | 模型位置、繁中指示、範例、合併邏輯、長逐字稿分段 |
+| `VoiceInk/Features/ZhTW/ZhTWPunctuation.swift`(新增) | 合併邏輯;CT 的輸入規則(`needsPunctuation`、`modelInput`);Breeze2 的模型位置、繁中指示、範例、長逐字稿分段 |
+| `VoiceInk/Features/ZhTW/ZhTWPunctuator.swift`(新增) | CT 補標點:包 sherpa-onnx 的 C API、開始錄音時載入、聽寫結束釋放、計時紀錄 |
+| `VoiceInk.xcodeproj/project.pbxproj` | 連結、嵌入 sherpa-onnx 的兩個 dylib,CT 模型放進 Resources,標頭檔和函式庫的搜尋路徑 |
 | `VoiceInk/Features/ModelLibrary/State/VoiceInkRefineService.swift` | 有 Breeze2 時改用它的資料夾與指示,輸出後合併;計時紀錄 |
 | `VoiceInkRefineXPC/VoiceInkRefineInferenceEngine.swift` | 範例展開成多輪對話、temperature 0;prefix cache;換指示不重新載入模型;計時紀錄 |
 | `VoiceInk/Infrastructure/Providers/Enhancement/VoiceInkRefine/VoiceInkRefineXPCClient.swift` | 閒置卸載時間改成可設定,預設 5 分鐘;計時紀錄 |
@@ -66,8 +71,8 @@ VoiceInk.app
 | `VoiceInkRefineXPC/VoiceInkRefineXPCService.swift` | 計時紀錄 |
 | `VoiceInk/Infrastructure/Providers/Transcription/Whisper/WhisperPrompt.swift` | 中文提示詞的預設值改成繁體 |
 | `VoiceInk/Features/ZhTW/ZhTWTranscript.swift`、`ZhTWSimplifiedOnly.swift`(新增) | 辨識完、補標點前整理:刪私用區字元、簡體專用字轉繁體、TEA 的零星標點拿掉;對照表由 `scripts/gen-zhtw-simplified.py` 產生 |
-| `TranscriptionPipeline.swift`、`AudioFileTranscriptionManager.swift`、`AudioFileTranscriptionService.swift` | 補標點前先呼叫 `ZhTWTranscript.clean`;`TranscriptionPipeline` 另記辨識計時 |
-| `VoiceInk/Features/Recording/Workflows/VoiceInkEngine.swift` | 開始錄音時載入 transcribe.cpp 模型的計時 |
+| `TranscriptionPipeline.swift`、`AudioFileTranscriptionManager.swift`、`AudioFileTranscriptionService.swift` | 辨識完、去掉頭尾空白之後:`ZhTWTranscript.clean` 再 `ZhTWPunctuator.punctuate`;`TranscriptionPipeline` 另記辨識計時 |
+| `VoiceInk/Features/Recording/Workflows/VoiceInkEngine.swift` | 開始錄音時載入 CT(`ZhTWPunctuator.preload`)、`cleanupResources` 釋放;載入 transcribe.cpp 模型的計時 |
 | `TranscribeCppModelCatalog.swift`、`TranscriptionModelRegistry.swift`、`LanguageDictionary.swift` | 模型清單加 TEA-ASR-1.1(下載位置、大小、SHA256、每 30 秒切段;只給中文) |
 | `VoiceInk/Features/ModelLibrary/Models/TranscriptionModel.swift` | 單一語言的模型顯示那個語言(原作者一律顯示 English) |
 | `README.md` | 換成這個 fork 的說明 |
@@ -96,9 +101,9 @@ VoiceInk.app
 
 ## 目前進度
 
-- v2 完成並在 M1 Pro 32GB 上使用中。
+- 目前:TEA-ASR-1.1 + CT-Transformer,在 M1 Pro 32GB 上使用中。
 - 完成:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。
 - 完成:換語音辨識模型的調查,見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)。
 - 進行中:語音辨識換成 TEA-ASR-1.1,見 [../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。2026-10-22 起這台改用 TEA(步驟 1–4 完成,步驟 5 實際使用中);README 等文件(步驟 6)用過再改。
-- 進行中:補標點換成 CT-Transformer,見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
-- 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。換完 CT 再接著做,步驟 b 拿掉。
+- 完成:補標點換成 CT-Transformer,見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。待使用者決定:Breeze2 補標點那條路要不要拆掉(步驟 5)。
+- 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。CT、TEA 都換好了,步驟 a1、b、c 大多不用做;要接著做時先改寫這份計畫。

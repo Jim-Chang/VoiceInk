@@ -19,9 +19,13 @@ git push origin zhtw
 - 用 **merge 不用 rebase**:我們的修改紀錄一直保留,也不用 force push。
 - 會衝突的地方:
   - `README.md`:一律保留我們的(`git checkout --ours README.md`)。
-  - 改過的 4 個上游檔案(見 [architecture/README.md](architecture/README.md#修改了原作者的哪些檔案)):手動合併。特別注意 `VoiceInkRefineService`、`VoiceInkRefineInferenceEngine` 的介面有沒有變。
+  - 改過的上游檔案(清單見 [architecture/README.md](architecture/README.md#修改了原作者的哪些檔案)):手動合併。特別注意:
+    - 三個辨識流程(`TranscriptionPipeline`、`AudioFileTranscriptionManager`、`AudioFileTranscriptionService`)在去掉頭尾空白之後呼叫 `ZhTWTranscript.clean` 和 `ZhTWPunctuator.punctuate`;上游改了這段流程,要確認呼叫還在、順序還是在段落格式化和 Word Replacements 之前。
+    - `VoiceInkEngine` 開始錄音時的 `ZhTWPunctuator.preload()` 和 `cleanupResources` 裡的 `unload()`。
+    - `project.pbxproj`:sherpa-onnx 的兩個 dylib、CT 模型和搜尋路徑(ID 都以 `E1C7F001` 開頭),和 whisper.xcframework 的設定放在一起;衝突時保留兩邊。
+    - `VoiceInkRefineService`、`VoiceInkRefineInferenceEngine`:Breeze2 補標點的舊改動,還沒拆掉前要注意介面有沒有變。
   - 模型清單的三個檔案(`TranscribeCppModelCatalog`、`TranscriptionModelRegistry`、`LanguageDictionary`)各加了一筆 TEA-ASR-1.1,衝突時保留兩邊。上游換了 `Transcribe-cpp-swift` 的版本時,TEA 要重新驗證:GGUF 是用 `856d7c1` 的轉檔程式轉的,新版可能有 #165(依長度調整產生上限)、可以拿掉每 30 秒切段。
-- 合併後先跑 `scripts/test-punctuation.sh`,再實際聽寫一句確認紀錄的模型是 `VoiceInk Refine V1`。
+- 合併後先跑 `scripts/test-punctuation.sh`,再實際聽寫一句,用 `python3 -I scripts/timing_report.py --last 10m` 確認有補標點(`punct` 欄位)、語音辨識用的是 TEA。
 
 ## Build
 

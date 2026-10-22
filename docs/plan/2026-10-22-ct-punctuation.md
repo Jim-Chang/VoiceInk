@@ -140,3 +140,5 @@ scripts/setup.sh check        # 安裝狀態
   - 判斷要不要補、給模型的版本(拿掉全形標點、轉簡體)放在 `ZhTWPunctuation`,`scripts/test-punctuation.sh` 加了 8 個案例,23/23 通過。
 - 2026-10-22 使用者決定補標點模型和語音辨識模型一樣用完就放(原本 App 啟動時載入、常駐約 250MB)。量到的組成:模型和計算空間約 88MB、27 萬詞的查詢表約 33MB、載入時用過但記憶體管理器沒還給系統的約 124MB(試過 `malloc_zone_pressure_relief`,收不回來)。改完後 App 閒著時 footprint 180MB(常駐版是 343MB)。啟動時不再載入,`AppDelegate` 的改動拿掉;改在 `VoiceInkEngine` 開始錄音時載入、`cleanupResources` 釋放。
 - 2026-10-22 實測發現句號後面多一個空格(「了解。␣所以…」):模式開著「文字格式化」,`ParagraphFormatter` 用空格接句子。以前它拿到的是沒標點的文字,所以沒作用。使用者選擇把它關掉(另一個選項是改成適合中文、保留自動分段,要改原作者的程式);`configure_voiceink.py` 加上 `isTextFormattingEnabled: false`,`setup.sh check` 也檢查。這台已經套用。
+- 2026-10-22 使用者實測(TEA 換上之前的 build `f5b7cd6`):7 句聽寫每次開始錄音都載入(0.08–0.14 秒)、結束都釋放;補標點 2–14 毫秒;短句放開快捷鍵到貼上 1.41–1.64 秒;句號後面沒有空格;只講英文的「git status」沒有補(貼出來的「GET status.」是語音辨識自己的輸出)。取消錄音沒有測到。
+- 2026-10-22 步驟 6 完成:架構文件(架構圖、元件位置、改了哪些檔案、進度)、`development.md`(合併上游要注意的地方)、README(模型和函式庫的來源與授權)一起改成 TEA + CT 的現況。App 內下載計畫在使用者決定只內建中文提示詞時已經記過。剩下步驟 5(Breeze2 補標點那條路要不要拆)待使用者決定;拆的話 `setup.sh` 也不再下載 Breeze2(現在還會下載 2GB,但沒用到)、不再要求 16GB。
