@@ -312,3 +312,7 @@ transcribe.cpp 路徑在 App 裡會用模型設定的語言(中文 → `language
 - 兩個模型各排在 A 五次;TEA-1.1 贏的 6 題裡 4 題在 A、2 題在 B,看不出位置影響。
 - Sonnet 事先判斷 TEA-1.1 較好的 4 題,使用者 4 題都選 TEA-1.1;Sonnet 判斷 mini 較好的 4 題,使用者選 mini 2 題、差不多 2 題;Sonnet 判斷一樣的 2 題,使用者都選 TEA-1.1。和 Sonnet 一致 6/10。
 - 所以建議裡的第 2 點(要省記憶體就用 mini)代價比 Sonnet 初篩看起來大:10 題裡 TEA-1.1 多對 4 題。
+
+## 使用者決定(2026-10-22)
+
+換成 TEA-ASR-1.1,補標點照舊用 CT。執行見 [../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。

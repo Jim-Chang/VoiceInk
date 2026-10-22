@@ -85,11 +85,13 @@ VoiceInk.app
 - **2026-10-21 語音辨識維持 Breeze-ASR-25 q8_0 + Metal。** q5、q4 沒變快反而錯更多;Core ML 編碼器更慢且第一次要編譯 14.5 分鐘;只處理實際長度錯誤率約 20%。見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md) 實驗 B。
 - **2026-10-22 補標點換成 CT-Transformer int8(sherpa-onnx)。** 使用者盲測 15 題:CT 8 題較好、Breeze2 3 題、差不多 4 題;每段 2–35 毫秒(Breeze2 0.26–2.7 秒)、模型 75MB、只用 CPU、結構上不會改字或答非所問。在 App 行程內用 sherpa-onnx 跑,辨識完直接補,不再經過 AI 潤稿。模型內建進 App、不加開關(辨識結果有中文字、沒有句號才補)。Breeze2 要不要留著備用,之後再決定。見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
 - **2026-10-22 其他設定用 VoiceInk 內建的匯出、匯入帶到另一台 Mac。** 「設定 → Export Settings」會帶模式(語音模型、語言、AI 潤稿、文字格式化)、快捷鍵、Word Replacements、詞彙表,不含 API key、中文提示詞和模型;所以只有中文提示詞寫進 App,其他不另外寫預設值。
+- **2026-10-22 語音辨識決定換成 TEA-ASR-1.1(transcribe.cpp)。** 使用者盲測對 Breeze 7:2、對 TEA-mini 6:2;短句辨識 1.20 → 0.21 秒、長句中位 4.8 → 2.2 秒;原生繁體、台灣用詞,英文詞保留和 Breeze 差不多。代價是聽寫時記憶體 3.7GB(Breeze 2.7GB,聽寫完都會釋放)、幾乎不加標點(照舊接 CT)。用 VoiceInk 已內建的 transcribe.cpp,不加新函式庫;Breeze 留著當備用。見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)、[../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。
 
 ## 目前進度
 
 - v2 完成並在 M1 Pro 32GB 上使用中。
 - 完成:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。
-- 完成、待決定:換語音辨識模型的調查。TEA-ASR-1.1(transcribe.cpp,VoiceInk 已內建)使用者盲測 7:2 勝 Breeze、辨識快 2–6 倍,但記憶體多約 1GB、沒有標點(要接 CT);換不換、換哪一個由使用者決定。見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)。
+- 完成:換語音辨識模型的調查,見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)。
+- 計畫中:語音辨識換成 TEA-ASR-1.1,見 [../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。GGUF 放哪等三件事待使用者決定。
 - 進行中:補標點換成 CT-Transformer,見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
 - 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。換完 CT 再接著做,步驟 b 拿掉。
