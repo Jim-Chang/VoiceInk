@@ -28,7 +28,8 @@
   - 原文有零星的逗號等標點時,先拿掉再給模型判斷,合併時保留原文的標點、不重複加。
 - **CT 一定會在結尾補上句號或問號**,單講一個「好」會變成「好。」。Breeze2 也一樣。
 - **出錯就貼原文。** 模型載入失敗時,每次開 App 跳一次通知,說「暫時不補標點」,之後聽寫照常貼沒標點的原文,不會卡住。
-- **速度**:補標點從短句約 0.3–0.5 秒、長句中位 2.7 秒,變成幾毫秒到幾十毫秒。錄音開始時不再載入模型、不和語音辨識搶 GPU,閒置 5 分鐘後第一句也不會變慢。
+- **速度**:補標點從短句約 0.3–0.5 秒、長句中位 2.7 秒,變成幾毫秒到幾十毫秒。不和語音辨識搶 GPU,閒置 5 分鐘後第一句也不會變慢。
+- **記憶體**:和語音辨識模型一樣用完就放。開始錄音時載入(約 0.14 秒,藏在講話時間裡),聽寫結束就釋放;App 閒著時不佔記憶體(載入時約 250MB)。
 - **紀錄**:紀錄裡的「原文」就是有標點的版本,不會另外出現 AI 潤稿的結果。要沒標點的原文時,把標點拿掉就是(合併只插標點、不改字)。
 - **要關掉時**(查問題用):`defaults write com.prakashjoshipax.VoiceInk ZhTWPunctuationEnabled -bool false`,重新聽寫就生效。以後真的需要開關,放在模式設定裡「文字格式化」旁邊(VoiceInk 放類似設定的地方)。
 
@@ -55,7 +56,7 @@
 - 新增 `VoiceInk/Features/ZhTW/ZhTWPunctuator.swift`:一個 actor,包 sherpa-onnx 的 C API(`SherpaOnnxCreateOfflinePunctuation`、`SherpaOfflinePunctuationAddPunct`、`SherpaOfflinePunctuationFreeText`)。專案用 synchronized folders,新的 Swift 檔放進資料夾就會加入專案。
 - 步驟:繁體原文 → 拿掉原有標點 → ICU `Traditional-Simplified` 轉簡體(字數變了就用原文,和評測一樣)→ CT → `ZhTWPunctuation.merge(original:modelOutput:)` 把標點插回繁體原文。
 - 不分段:CT 的實作本來就會切成小段,帶著前一段的尾巴往下算。評測裡 582 字那段正常。
-- App 啟動後在背景載入(約 0.2 秒),之後常駐不卸載。第一次聽寫時還沒載完就等它。步驟 2 量記憶體,太大再考慮閒置卸載。
+- 開始錄音時在背景載入(`VoiceInkEngine` 裡原作者準備模型的地方),聽寫結束時釋放(`VoiceInkEngine.cleanupResources`,語音辨識模型也在這裡釋放)。補標點時還沒載入就先載入。匯入音檔、在紀錄裡重新辨識沒有「聽寫結束」,補完就釋放。
 - CPU、2 個執行緒。用 actor,`@MainActor` 的聽寫流程不會卡住主執行緒。
 - 計時:`ZhTWTiming` 加一筆 `punct chars= load= model= merge= total=`(只有數字),`scripts/timing_report.py` 加一欄。
 
@@ -137,3 +138,4 @@ scripts/setup.sh check        # 安裝狀態
   - 速度(2 執行緒,只算補標點):短句中位 2.0 毫秒(最大 2.7)、中 6.5 毫秒(最大 17.2)、長 29.5 毫秒(最大 97)。載入 0.11–0.14 秒。
   - 記憶體:模型載入後常駐約 250MB(工具本身的 footprint 253MB),比預估的 100MB 大。載入只要 0.14 秒,要省記憶體可以改成閒置就卸載、開始錄音時再載入。
   - 判斷要不要補、給模型的版本(拿掉全形標點、轉簡體)放在 `ZhTWPunctuation`,`scripts/test-punctuation.sh` 加了 8 個案例,23/23 通過。
+- 2026-10-22 使用者決定補標點模型和語音辨識模型一樣用完就放(原本 App 啟動時載入、常駐約 250MB)。量到的組成:模型和計算空間約 88MB、27 萬詞的查詢表約 33MB、載入時用過但記憶體管理器沒還給系統的約 124MB(試過 `malloc_zone_pressure_relief`,收不回來)。改完後 App 閒著時 footprint 180MB(常駐版是 343MB)。啟動時不再載入,`AppDelegate` 的改動拿掉;改在 `VoiceInkEngine` 開始錄音時載入、`cleanupResources` 釋放。

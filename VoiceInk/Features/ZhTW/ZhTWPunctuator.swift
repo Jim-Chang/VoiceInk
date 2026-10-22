@@ -6,6 +6,8 @@ import SherpaOnnxC
 /// 用 CT-Transformer（FunASR 的中英文標點模型，sherpa-onnx 轉的 int8 版，跟著 App 一起裝），
 /// 在 App 自己的行程裡用 CPU 跑，每段幾毫秒。模型用簡體訓練：先轉簡體給它判斷，
 /// 再用 `ZhTWPunctuation.merge` 把標點插回繁體原文，輸出的每個字都來自辨識原文。
+/// 和語音辨識模型一樣用完就放：開始錄音時載入（約 0.14 秒，藏在講話時間裡），
+/// 聽寫結束時（VoiceInkEngine.cleanupResources）釋放，平常不佔記憶體（載入後約 250MB）。
 /// 設計見 docs/plan/2026-10-22-ct-punctuation.md。
 actor ZhTWPunctuator {
     static let shared = ZhTWPunctuator()
@@ -27,7 +29,7 @@ actor ZhTWPunctuator {
         self.modelPath = modelPath
     }
 
-    /// App 啟動時在背景載入（約 0.2 秒），第一次聽寫就不用等。
+    /// 開始錄音時在背景載入，講完就不用等。
     nonisolated static func preload() {
         Task.detached(priority: .utility) { await shared.load() }
     }
@@ -37,8 +39,10 @@ actor ZhTWPunctuator {
         return ZhTWPunctuation.needsPunctuation(text)
     }
 
-    /// 補標點；不需要補、模型沒載入或出錯時回傳原文。
-    func punctuate(_ text: String) async -> String {
+    /// 補標點；不需要補、模型載入失敗或出錯時回傳原文。模型還沒載入就先載入。
+    /// 不是聽寫的流程（匯入音檔、在紀錄裡重新辨識）沒有聽寫結束的時機，用 `unloadAfterwards` 補完就放。
+    func punctuate(_ text: String, unloadAfterwards: Bool = false) async -> String {
+        defer { if unloadAfterwards { unload() } }
         guard Self.shouldPunctuate(text) else { return text }
         let started = ContinuousClock.now
         let loadDuration = load()
@@ -89,6 +93,13 @@ actor ZhTWPunctuator {
             ZhTWTiming.logger.notice("punct-load load=\(ZhTWTiming.seconds(duration), privacy: .public)")
         }
         return duration
+    }
+
+    func unload() {
+        guard let punctuation else { return }
+        SherpaOnnxDestroyOfflinePunctuation(punctuation)
+        self.punctuation = nil
+        ZhTWTiming.logger.notice("punct-unload")
     }
 
     private func notifyFailureOnce() async {
