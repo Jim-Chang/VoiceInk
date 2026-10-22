@@ -200,6 +200,9 @@ def cmd_report(history, out_dir, terms_path, large_path, report_path, spots_path
                     "old": join(to[i1:i2]), "new": join(tn[j1:j2]),
                     "before": join(to[max(0, i1 - 8):i1]), "after": join(to[i2:i2 + 8]),
                     "terms": involved,
+                    # 整段文字,這一處用 ⟦ ⟧ 標出來(tea_vocab_page.py 用)
+                    "old_marked": join(to[:i1]) + "⟦" + join(to[i1:i2]) + "⟧" + join(to[i2:]),
+                    "new_marked": join(tn[:j1]) + "⟦" + join(tn[j1:j2]) + "⟧" + join(tn[j2:]),
                 })
         report["pairs"][f"{old}>{new}"] = {
             "clips": len(ids), "identical": identical, "spots": n_spots, "spots_with_terms": n_term_spots,
