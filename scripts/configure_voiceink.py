@@ -10,6 +10,9 @@ VoiceInk 必須先關掉（setup.sh configure 會處理），否則它結束時�
   - modeConfigurationsV2      預設模式：Breeze 模型、中文、AI 潤稿關掉、文字格式化關掉
                               （補標點在辨識完就做了，見 ZhTWPunctuator，不靠 AI 潤稿；
                               文字格式化是給英文的，會在中文句號後面加空格、自動分段）
+  - IsTranscriptionCleanupEnabled、TranscriptionRetentionMinutes
+                              聽寫紀錄和錄音保留 3 天就自動刪除（歷史紀錄視窗的
+                              「Auto-delete Transcript History」）；沒有對應紀錄的錄音檔也會被刪
 
 用法：/usr/bin/python3 configure_voiceink.py [--dry-run]
 """
@@ -54,6 +57,15 @@ def main():
             mode[key] = value
             changes.append(f"模式「{mode.get('name')}」{key} → {value}")
     prefs["modeConfigurationsV2"] = json.dumps(modes, ensure_ascii=False).encode("utf-8")
+
+    retention = {
+        "IsTranscriptionCleanupEnabled": True,
+        "TranscriptionRetentionMinutes": 3 * 24 * 60,
+    }
+    for key, value in retention.items():
+        if prefs.get(key) != value:
+            prefs[key] = value
+            changes.append(f"{key} → {value}")
 
     if not changes:
         print("VoiceInk 設定已經是最新的，沒有要改的。")
