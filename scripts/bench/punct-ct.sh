@@ -9,6 +9,7 @@ mkdir -p "$OUT"
 cp scripts/bench/PunctCT.swift "$OUT/main.swift"
 swiftc -O -o "$OUT/punct-ct" "$OUT/main.swift" scripts/bench/PunctCTStubs.swift \
     VoiceInk/Features/ZhTW/ZhTWPunctuator.swift VoiceInk/Features/ZhTW/ZhTWPunctuation.swift \
-    VoiceInk/Features/ZhTW/ZhTWTiming.swift \
+    VoiceInk/Features/ZhTW/ZhTWTiming.swift VoiceInk/Features/ZhTW/ZhTWTranscript.swift \
+    VoiceInk/Features/ZhTW/ZhTWSimplifiedOnly.swift \
     -I "$DEPS/include" -L "$DEPS/lib" -lsherpa-onnx-c-api -Xlinker -rpath -Xlinker "$DEPS/lib"
 "$OUT/punct-ct" "$@"

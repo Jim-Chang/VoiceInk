@@ -171,7 +171,8 @@ enum ZhTWPunctuation {
 
     private static let opening: Set<Character> = Set("「『（《")
     private static let closing: Set<Character> = Set("，。、？！：；」』）》…")
-    private static let punctuation = opening.union(closing)
+    /// 全形標點（ZhTWTranscript 也用來拿掉 TEA-ASR 零星的標點）
+    static let punctuation = opening.union(closing)
     private static let halfToFull: [Character: Character] = [
         ",": "，", ".": "。", "?": "？", "!": "！", ":": "：", ";": "；",
     ]

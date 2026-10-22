@@ -85,6 +85,23 @@ check("原文已有的逗號保留、不重複加",
       ZhTWPunctuation.merge(original: "好的，我知道了你什麼時候來", modelOutput: "好的，我知道了。你什么时候来？"),
       "好的，我知道了。你什麼時候來？")
 
+// MARK: - 補標點前整理辨識結果(ZhTWTranscript,TEA-ASR 用)
+
+check("刪掉私用區字元(TEA 的 tokenizer 標記)",
+      ZhTWTranscript.clean("數\u{E13A}據放在時\u{E454}間", modelName: "ggml-breeze-asr-25-q8_0"), "數據放在時間")
+check("簡體專用字轉繁體",
+      ZhTWTranscript.clean("这个还要记下来", modelName: "tea-asr-1.1"), "這個還要記下來")
+check("繁體也會用的字不動(台、后、干、里、了)",
+      ZhTWTranscript.clean("一台電腦之后干脆放在里面了", modelName: "ggml-breeze-asr-25-q8_0"), "一台電腦之后干脆放在里面了")
+check("TEA 零星的全形標點拿掉,交給 CT",
+      ZhTWTranscript.clean("好，我知道了。你什麼時候來", modelName: "tea-asr-1.1"), "好我知道了你什麼時候來")
+check("拿掉之後 CT 照樣會補",
+      "\(ZhTWPunctuation.needsPunctuation(ZhTWTranscript.clean("好，我知道了。你什麼時候來", modelName: "tea-asr-1.1")))", "true")
+check("其他模型的標點保留",
+      ZhTWTranscript.clean("好，我知道了。", modelName: "ggml-breeze-asr-25-q8_0"), "好，我知道了。")
+check("半形的點和英文不動(TEA 也一樣)",
+      ZhTWTranscript.clean("執行 setup.sh 跑 59.5 秒", modelName: "tea-asr-1.1"), "執行 setup.sh 跑 59.5 秒")
+
 let total = cases.count + checks
 print("\(total - failures)/\(total) 通過")
 exit(failures == 0 ? 0 : 1)

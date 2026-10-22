@@ -73,6 +73,7 @@ class AudioTranscriptionService: ObservableObject {
             let transcriptionDuration = Date().timeIntervalSince(transcriptionStart)
             text = TranscriptionOutputFilter.filter(text)
             text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            text = ZhTWTranscript.clean(text, modelName: model.name)
             text = await ZhTWPunctuator.shared.punctuate(text, unloadAfterwards: true)
             let formattingConfiguration = ModeRuntimeResolver.transcriptionFormattingConfiguration(mode: mode)
 
