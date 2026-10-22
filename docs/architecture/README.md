@@ -113,4 +113,5 @@ VoiceInk.app(全部在同一個行程)
 - 完成:換語音辨識模型的調查,見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)。
 - 進行中:語音辨識換成 TEA-ASR-1.1,見 [../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。2026-10-22 起這台改用 TEA(步驟 1–4 完成,步驟 5 實際使用中);README 等文件(步驟 6)用過再改。
 - 完成:補標點換成 CT-Transformer、拆掉 Breeze2 補標點,見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
+- 暫停:邊講邊出字(錄音時在面板顯示預覽,貼出去的文字不變),只查了資料、寫好實驗設計,量測沒跑。見 [../investigations/2026-10-22-streaming-preview.md](../investigations/2026-10-22-streaming-preview.md)。
 - 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。CT、TEA 都換好了,步驟 a1、b、c 大多不用做;要接著做時先改寫這份計畫。
