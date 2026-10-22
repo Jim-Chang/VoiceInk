@@ -59,7 +59,9 @@ extension TranscriptionModel {
     }
 
     var language: String {
-        isMultilingualModel ? String(localized: "Multilingual") : String(localized: "English")
+        if isMultilingualModel { return String(localized: "Multilingual") }
+        // voiceink-zhtw：單一語言的模型顯示那個語言（原作者寫死 English，TEA-ASR 只有中文）
+        return supportedLanguages.values.first ?? String(localized: "English")
     }
 
     var supportsStreaming: Bool { false }
