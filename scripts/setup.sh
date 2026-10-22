@@ -34,8 +34,7 @@ memory_gb()     { echo $(( $(sysctl -n hw.memsize) / 1073741824 )); }
 has_xcode()     { xcodebuild -version > /dev/null 2>&1; }
 has_metal()     { xcrun -f metal > /dev/null 2>&1; }
 has_app()       { [[ -d /Applications/VoiceInk.app ]]; }
-app_has_zhtw()  { [[ -d /Applications/VoiceInk.app ]] && grep -q "ZHTW_FEW_SHOT_JSON" \
-                    /Applications/VoiceInk.app/Contents/XPCServices/VoiceInkRefineXPC.xpc/Contents/MacOS/VoiceInkRefineXPC 2>/dev/null; }
+app_has_zhtw()  { [[ -f /Applications/VoiceInk.app/Contents/Resources/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/model.int8.onnx ]]; }
 has_asr()       { [[ -f "$ASR_DIR/$ASR_FILE" ]]; }
 has_llm()       { [[ -f "$LLM_DIR/model.safetensors" && -f "$LLM_DIR/tokenizer.json" && -f "$LLM_DIR/config.json" ]]; }
 configured()    {
@@ -43,7 +42,7 @@ configured()    {
 import plistlib, json, sys
 p = plistlib.loads(sys.stdin.buffer.read())
 m = next(x for x in json.loads(p["modeConfigurationsV2"]) if x.get("isDefault"))
-sys.exit(0 if m.get("selectedAIProvider") == "VoiceInk Refine" and m.get("isAIEnhancementEnabled") else 1)' 2>/dev/null
+sys.exit(0 if m.get("selectedTranscriptionModelName") == "ggml-breeze-asr-25-q8_0" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") else 1)' 2>/dev/null
 }
 
 check() {
@@ -53,6 +52,7 @@ check() {
     if has_xcode; then ok "Xcode"; else todo "Xcode（請從 App Store 安裝並打開一次）"; fi
     if has_metal; then ok "Metal 工具鏈"; else todo "Metal 工具鏈"; fi
     if command -v cmake > /dev/null; then ok "cmake"; else todo "cmake"; fi
+    if "$SCRIPTS_DIR/deps-sherpa-onnx.sh" check > /dev/null; then ok "sherpa-onnx 和補標點模型（build 用）"; else todo "sherpa-onnx 和補標點模型（build 時會自動下載）"; fi
     if app_has_zhtw; then ok "VoiceInk.app（含繁中補標點）"
     elif has_app; then todo "VoiceInk.app 是沒有繁中補標點的版本（scripts/update.sh --no-pull 重裝）"
     else todo "VoiceInk.app"; fi

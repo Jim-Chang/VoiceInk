@@ -44,6 +44,9 @@ if [[ $PULL == 1 ]]; then
     fi
 fi
 
+echo "==> 準備 sherpa-onnx 和補標點模型（已經有就跳過）"
+"$SRC/scripts/deps-sherpa-onnx.sh"
+
 echo "==> Build（第一次或重編 whisper.cpp 時會比較久）"
 make local
 

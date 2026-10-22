@@ -11,6 +11,7 @@
   rec      錄音長度(按下快捷鍵到放開)
   gap      距離上一次貼上
   asr      語音辨識
+  punct    辨識完直接補標點(CT-Transformer,ZhTWPunctuator);後面 pre 到 xpc 是舊的 AI 潤稿補標點(Breeze2)
   pre      辨識完到開始補標點(字詞替換等)
   chunks   長的逐字稿分成幾段補標點(其他補標點欄位是各段加總)
   queue    等前一個補標點動作做完
@@ -61,7 +62,8 @@ def group_dictations(events):
     """每次開始辨識算一次聽寫。
 
     - 錄音開始 = 之前最近一次顯示錄音面板。螢幕變動時重新擺放面板也會記一次「Showed」,不算。
-    - 準備模型(*-prepare)發生在錄音開始時,算下一次聽寫的;補標點和貼上算目前這次的。
+    - 準備模型(*-prepare)發生在錄音開始時、CT 模型載入(punct-load)發生在 App 啟動時,都算下一次聽寫的;
+      補標點和貼上算目前這次的。
     - 沒講話的錄音只有辨識、沒有補標點和貼上,照樣一行。
     """
     dictations = []
@@ -80,7 +82,7 @@ def group_dictations(events):
             dictations.append(current)
         elif category == "ZhTWTiming":
             name = message.split(" ", 1)[0]
-            target = upcoming if name.endswith("-prepare") else current
+            target = upcoming if name.endswith("-prepare") or name == "punct-load" else current
             if target is None:
                 continue
             values = dict(FIELDS.findall(message))
@@ -177,7 +179,7 @@ def main():
     dictations = group_dictations(read_events(args))
     samples = read_load(args.load) if args.load else []
 
-    header = ["time", "rec", "gap", "asr", "pre", "chunks", "queue", "warm", "idle", "pfx", "prep",
+    header = ["time", "rec", "gap", "asr", "punct", "pre", "chunks", "queue", "warm", "idle", "pfx", "prep",
               "prompt", "gen", "other", "xpc", "paste", "total", "therm", "qos"]
     if samples:
         header += ["bgGPU", "bgTop"]
@@ -205,6 +207,7 @@ def main():
             fmt(seconds(d["rec_start"], d.get("asr_start"))),
             fmt(seconds(previous_paste, started), 5) if previous_paste else fmt(None),
             fmt(seconds(d.get("asr_start"), d.get("asr_end"))),
+            fmt(number(d.get("punct", {}), "total"), 6) if "punct" in d else fmt(None),
             fmt(seconds(d.get("asr_end"), requested_at)),
             fmt(str(client.get("_chunks", "-"))),
             fmt(queue),
@@ -227,12 +230,16 @@ def main():
         print("  ".join(row))
         previous_paste = d.get("paste") or previous_paste
 
-    prepares = [d for d in dictations if "engine-prepare" in d]
+    prepares = [d for d in dictations if "engine-prepare" in d or "punct-load" in d]
     if prepares:
-        print("\n模型重新載入:")
+        print("\n模型載入:")
         for d in prepares:
-            p = d["engine-prepare"]
-            print(f"  {d['rec_start'] or d['asr_start']:%H:%M:%S}  load={p.get('load')}  warmup={p.get('warmup')}  qos={p.get('qos')}")
+            started = f"{d['rec_start'] or d['asr_start']:%H:%M:%S}"
+            if "punct-load" in d:
+                print(f"  {started}  補標點 CT  load={d['punct-load'].get('load')}")
+            if "engine-prepare" in d:
+                p = d["engine-prepare"]
+                print(f"  {started}  Breeze2  load={p.get('load')}  warmup={p.get('warmup')}  qos={p.get('qos')}")
 
 
 if __name__ == "__main__":
