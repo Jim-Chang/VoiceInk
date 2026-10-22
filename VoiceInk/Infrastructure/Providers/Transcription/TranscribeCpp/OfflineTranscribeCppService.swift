@@ -118,10 +118,11 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
             configuredMaximum: artifact.maximumChunkSeconds,
             capabilitiesMaximumMilliseconds: nativeModel.capabilities.maxAudioMs
         )
-        let chunks = samples.energyAwareChunks(
-            maximumCount: maximumChunkSeconds * 16_000,
-            boundarySearchCount: artifact.boundarySearchSeconds * 16_000,
-            energyWindowCount: artifact.boundaryEnergyWindowSamples
+        // voiceink-zhtw：VAD 開著時先用語音偵測切段，只送講話的部分（TranscribeCppSpeechSegmenter）
+        let chunks = await speechAwareChunks(
+            samples,
+            maximumChunkSeconds: maximumChunkSeconds,
+            artifact: artifact
         )
 
         let startedAt = ContinuousClock.now
@@ -129,13 +130,11 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
         chunkTranscripts.reserveCapacity(chunks.count)
         // voiceink-zhtw：一段碰到產生上限不拖垮整個檔案（docs/plan/2026-10-22-long-audio-segmentation.md）
         var guardStats = ChunkGuardStats()
-        var chunkStartSample = 0
 
         for chunk in chunks {
             try Task.checkCancellation()
             let pieces = try await runGuarded(
                 chunk,
-                startSample: chunkStartSample,
                 model: nativeModel,
                 options: options,
                 energyWindowCount: artifact.boundaryEnergyWindowSamples,
@@ -144,7 +143,6 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
             for piece in pieces where !piece.text.isEmpty {
                 chunkTranscripts.append((text: piece.text, language: piece.language ?? language))
             }
-            chunkStartSample += chunk.count
         }
         ZhTWTiming.logger.notice(
             "asr-chunks chunks=\(chunks.count, privacy: .public) retried=\(guardStats.retried, privacy: .public) truncated=\(guardStats.truncated, privacy: .public)"
@@ -368,40 +366,91 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
     /// 段長 4 秒以上就在中間附近最安靜的地方切成兩半，各跑一次（只切一層，避免一段拖很久）；
     /// 還是碰到上限、或太短不切，就留已辨識的字、縮掉結尾的重複。其他錯誤和取消照舊往外丟。
     private func runGuarded(
-        _ chunk: [Float],
-        startSample: Int,
+        _ chunk: TranscribeCppSpeechSegmenter.Chunk,
         model: Model,
         options: RunOptions,
         energyWindowCount: Int,
         stats: inout ChunkGuardStats
     ) async throws -> [(text: String, language: String?)] {
+        let samples = chunk.samples
         do {
-            return [try await runChunk(chunk, model: model, options: options)]
+            return [try await runChunk(samples, model: model, options: options)]
         } catch TranscribeError.outputTruncated(_, let partial) {
-            guard chunk.count >= Self.minimumRetrySamples else {
-                return [salvage(partial, startSample: startSample, sampleCount: chunk.count, stats: &stats)]
+            guard samples.count >= Self.minimumRetrySamples else {
+                return [salvage(partial, startSample: chunk.startSample, sampleCount: samples.count, stats: &stats)]
             }
             stats.retried += 1
+            ZhTWTiming.logger.notice(
+                "asr-retry at=\(String(format: "%.1f", Double(chunk.startSample) / 16_000), privacy: .public) length=\(String(format: "%.1f", Double(samples.count) / 16_000), privacy: .public)"
+            )
             // 上限設成原長度的六成、在中間兩成裡找最安靜的地方，剛好切成兩半
-            let halves = chunk.energyAwareChunks(
-                maximumCount: chunk.count * 6 / 10,
-                boundarySearchCount: chunk.count * 2 / 10,
+            let halves = samples.energyAwareChunks(
+                maximumCount: samples.count * 6 / 10,
+                boundarySearchCount: samples.count * 2 / 10,
                 energyWindowCount: energyWindowCount
             )
             var results: [(text: String, language: String?)] = []
-            var halfStartSample = startSample
+            var halfOffset = 0
             for half in halves {
                 try Task.checkCancellation()
                 do {
                     results.append(try await runChunk(half, model: model, options: options))
                 } catch TranscribeError.outputTruncated(_, let partial) {
-                    results.append(
-                        salvage(partial, startSample: halfStartSample, sampleCount: half.count, stats: &stats)
-                    )
+                    let halfStart = chunk.sourcePosition(ofOffset: halfOffset)
+                    results.append(salvage(partial, startSample: halfStart, sampleCount: half.count, stats: &stats))
                 }
-                halfStartSample += half.count
+                halfOffset += half.count
             }
             return results
+        }
+    }
+
+    /// 錄音超過一段的上限（30 秒）、而且 VAD 設定（IsVADEnabled，和 Whisper、Parakeet 共用）開著時，
+    /// 先用語音偵測切段。短的聽寫不用：91 段實際聽寫比較過，結果有好有壞、沒有比較好，也不會鬼打牆。
+    /// 關著、偵測失敗、或整段都沒偵測到講話時，照原作者的方式每 30 秒切一段。
+    private func speechAwareChunks(
+        _ samples: [Float],
+        maximumChunkSeconds: Int,
+        artifact: TranscribeCppModelArtifact
+    ) async -> [TranscribeCppSpeechSegmenter.Chunk] {
+        let maximumCount = maximumChunkSeconds * 16_000
+        let splitBySilence: ([Float]) -> [[Float]] = {
+            $0.energyAwareChunks(
+                maximumCount: maximumCount,
+                boundarySearchCount: artifact.boundarySearchSeconds * 16_000,
+                energyWindowCount: artifact.boundaryEnergyWindowSamples
+            )
+        }
+
+        if samples.count > maximumCount,
+            UserDefaults.standard.bool(forKey: "IsVADEnabled"),
+            let modelPath = await VADModelManager.shared.getModelPath()
+        {
+            let startedAt = ContinuousClock.now
+            if let ranges = TranscribeCppSpeechSegmenter.speechRanges(
+                in: samples,
+                modelPath: modelPath,
+                maximumSeconds: maximumChunkSeconds
+            ), !ranges.isEmpty {
+                let chunks = TranscribeCppSpeechSegmenter.pack(
+                    ranges,
+                    of: samples,
+                    maximumCount: maximumCount,
+                    splitLongSpeech: splitBySilence
+                )
+                let speechCount = ranges.reduce(0) { $0 + $1.count }
+                ZhTWTiming.logger.notice(
+                    "asr-vad seconds=\(String(format: "%.1f", Double(samples.count) / 16_000), privacy: .public) speech=\(String(format: "%.1f", Double(speechCount) / 16_000), privacy: .public) ranges=\(ranges.count, privacy: .public) chunks=\(chunks.count, privacy: .public) took=\(ZhTWTiming.seconds(startedAt.duration(to: .now)), privacy: .public)"
+                )
+                return chunks
+            }
+            ZhTWTiming.logger.notice("asr-vad fallback")
+        }
+
+        var start = 0
+        return splitBySilence(samples).map { piece in
+            defer { start += piece.count }
+            return TranscribeCppSpeechSegmenter.Chunk(samples: piece, sourceRanges: [start..<(start + piece.count)])
         }
     }
 
