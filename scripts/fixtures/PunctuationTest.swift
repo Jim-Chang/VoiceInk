@@ -57,6 +57,24 @@ check("其他模型的標點保留",
 check("半形的點和英文不動(TEA 也一樣)",
       ZhTWTranscript.clean("執行 setup.sh 跑 59.5 秒", modelName: "tea-asr-1.1"), "執行 setup.sh 跑 59.5 秒")
 
+// MARK: - 長音檔一段碰到產生上限(ZhTWTranscript.collapseTrailingRepetition)
+
+check("鬼打牆:正常文字不變",
+      ZhTWTranscript.collapseTrailingRepetition("我們先看這個 API 再決定要不要 deploy"), "我們先看這個 API 再決定要不要 deploy")
+check("鬼打牆:只重複兩次不動",
+      ZhTWTranscript.collapseTrailingRepetition("好啊好啊"), "好啊好啊")
+check("鬼打牆:三次以上縮成一次,前面的內容保留",
+      ZhTWTranscript.collapseTrailingRepetition("今天會議先講預算然後下週再看然後下週再看然後下週再看"), "今天會議先講預算然後下週再看")
+check("鬼打牆:被上限切斷的半截拿掉",
+      ZhTWTranscript.collapseTrailingRepetition("我們先看這個好我們先看這個好我們先看這個好我們先"), "我們先看這個好")
+check("鬼打牆:單一字重複",
+      ZhTWTranscript.collapseTrailingRepetition("這個的的的的的的的的"), "這個的")
+check("鬼打牆:空字串", ZhTWTranscript.collapseTrailingRepetition(""), "")
+check("接段:英文和英文之間補空格", "\(ZhTWTranscript.needsSpaceBetween("先看這個 API", "deploy 完再說"))", "true")
+check("接段:數字和英文之間補空格", "\(ZhTWTranscript.needsSpaceBetween("版本 2", "beta 的"))", "true")
+check("接段:中文和英文之間不補", "\(ZhTWTranscript.needsSpaceBetween("先看這個", "API 再說"))", "false")
+check("接段:中文和中文之間不補", "\(ZhTWTranscript.needsSpaceBetween("先看這個", "再說"))", "false")
+
 let total = cases.count + checks
 print("\(total - failures)/\(total) 通過")
 exit(failures == 0 ? 0 : 1)

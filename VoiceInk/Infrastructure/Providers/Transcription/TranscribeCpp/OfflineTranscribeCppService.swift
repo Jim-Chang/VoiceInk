@@ -127,16 +127,28 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
         let startedAt = ContinuousClock.now
         var chunkTranscripts: [(text: String, language: String?)] = []
         chunkTranscripts.reserveCapacity(chunks.count)
+        // voiceink-zhtw：一段碰到產生上限不拖垮整個檔案（docs/plan/2026-10-22-long-audio-segmentation.md）
+        var guardStats = ChunkGuardStats()
+        var chunkStartSample = 0
 
         for chunk in chunks {
             try Task.checkCancellation()
-            let session = try nativeModel.session()
-            let transcript = try await session.run(chunk, options: options)
-            let text = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty {
-                chunkTranscripts.append((text: text, language: transcript.language ?? language))
+            let pieces = try await runGuarded(
+                chunk,
+                startSample: chunkStartSample,
+                model: nativeModel,
+                options: options,
+                energyWindowCount: artifact.boundaryEnergyWindowSamples,
+                stats: &guardStats
+            )
+            for piece in pieces where !piece.text.isEmpty {
+                chunkTranscripts.append((text: piece.text, language: piece.language ?? language))
             }
+            chunkStartSample += chunk.count
         }
+        ZhTWTiming.logger.notice(
+            "asr-chunks chunks=\(chunks.count, privacy: .public) retried=\(guardStats.retried, privacy: .public) truncated=\(guardStats.truncated, privacy: .public)"
+        )
 
         logger.notice(
             "\(transcribeCppModel.displayName, privacy: .public) completed in \(startedAt.duration(to: .now).formatted(.units(allowed: [.seconds], width: .narrow)), privacy: .public) for \(samples.count, privacy: .public) samples"
@@ -327,7 +339,10 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
     private func joinedText(from chunks: [(text: String, language: String?)]) -> String {
         chunks.enumerated().reduce(into: "") { result, entry in
             let (index, chunk) = entry
-            if index > 0, languageUsesSpaces(chunk.language) {
+            // voiceink-zhtw：中文也一樣，前後都是英文字母或數字時補空格，不然會黏成「APIdeploy」
+            if index > 0,
+                languageUsesSpaces(chunk.language) || ZhTWTranscript.needsSpaceBetween(result, chunk.text)
+            {
                 result.append(" ")
             }
             result.append(chunk.text)
@@ -337,6 +352,82 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
     private func languageUsesSpaces(_ language: String?) -> Bool {
         guard let language else { return true }
         return language != "ja" && language != "yue" && language != "zh"
+    }
+
+    // MARK: - voiceink-zhtw：一段碰到產生上限時的保險
+
+    private struct ChunkGuardStats {
+        var retried = 0
+        var truncated = 0
+    }
+
+    /// 切成兩半重跑的最短段長（4 秒）
+    private static let minimumRetrySamples = 4 * 16_000
+
+    /// 一段碰到產生上限（多半是模型鬼打牆，同一句一直重複）時：
+    /// 段長 4 秒以上就在中間附近最安靜的地方切成兩半，各跑一次（只切一層，避免一段拖很久）；
+    /// 還是碰到上限、或太短不切，就留已辨識的字、縮掉結尾的重複。其他錯誤和取消照舊往外丟。
+    private func runGuarded(
+        _ chunk: [Float],
+        startSample: Int,
+        model: Model,
+        options: RunOptions,
+        energyWindowCount: Int,
+        stats: inout ChunkGuardStats
+    ) async throws -> [(text: String, language: String?)] {
+        do {
+            return [try await runChunk(chunk, model: model, options: options)]
+        } catch TranscribeError.outputTruncated(_, let partial) {
+            guard chunk.count >= Self.minimumRetrySamples else {
+                return [salvage(partial, startSample: startSample, sampleCount: chunk.count, stats: &stats)]
+            }
+            stats.retried += 1
+            // 上限設成原長度的六成、在中間兩成裡找最安靜的地方，剛好切成兩半
+            let halves = chunk.energyAwareChunks(
+                maximumCount: chunk.count * 6 / 10,
+                boundarySearchCount: chunk.count * 2 / 10,
+                energyWindowCount: energyWindowCount
+            )
+            var results: [(text: String, language: String?)] = []
+            var halfStartSample = startSample
+            for half in halves {
+                try Task.checkCancellation()
+                do {
+                    results.append(try await runChunk(half, model: model, options: options))
+                } catch TranscribeError.outputTruncated(_, let partial) {
+                    results.append(
+                        salvage(partial, startSample: halfStartSample, sampleCount: half.count, stats: &stats)
+                    )
+                }
+                halfStartSample += half.count
+            }
+            return results
+        }
+    }
+
+    private func runChunk(
+        _ samples: [Float],
+        model: Model,
+        options: RunOptions
+    ) async throws -> (text: String, language: String?) {
+        let session = try model.session()
+        let transcript = try await session.run(samples, options: options)
+        return (transcript.text.trimmingCharacters(in: .whitespacesAndNewlines), transcript.language)
+    }
+
+    /// 保留碰到上限前已辨識的字、縮掉結尾的重複；紀錄只寫時間位置和字數，不寫內容。
+    private func salvage(
+        _ partial: Transcript?,
+        startSample: Int,
+        sampleCount: Int,
+        stats: inout ChunkGuardStats
+    ) -> (text: String, language: String?) {
+        stats.truncated += 1
+        let text = ZhTWTranscript.collapseTrailingRepetition(partial?.text ?? "")
+        ZhTWTiming.logger.notice(
+            "asr-loop at=\(String(format: "%.1f", Double(startSample) / 16_000), privacy: .public) length=\(String(format: "%.1f", Double(sampleCount) / 16_000), privacy: .public) chars=\(text.count, privacy: .public)"
+        )
+        return (text, partial?.language)
     }
 
     private static func initializeBackendsIfNeeded() throws {

@@ -28,6 +28,55 @@ enum ZhTWTranscript {
         return result
     }
 
+    // MARK: - 長音檔分段辨識（OfflineTranscribeCppService，見 docs/plan/2026-10-22-long-audio-segmentation.md）
+
+    /// 一段碰到產生上限時，模型多半在「鬼打牆」：結尾同一個片段一直重複，最後被上限切斷。
+    /// 找結尾連續重複 3 次以上的片段（1–40 字），只留一次，被切斷的半截也拿掉。
+    /// 只用在碰到上限的那段，所以「對對對」這種正常說法不會進來。
+    static func collapseTrailingRepetition(_ text: String) -> String {
+        let chars = Array(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        let count = chars.count
+        guard count >= minimumRepeats else { return String(chars) }
+
+        var best: (start: Int, unit: ArraySlice<Character>)?
+        var mostRemoved = 0
+        for length in 1...min(maximumRepeatLength, count / minimumRepeats) {
+            for tail in 0..<length {
+                let end = count - tail
+                let unit = chars[(end - length)..<end]
+                // 被上限切斷的半截要是這個片段的開頭
+                guard chars[end..<count].elementsEqual(unit.prefix(tail)) else { continue }
+                var start = end - length
+                var repeats = 1
+                while start >= length, chars[(start - length)..<start].elementsEqual(unit) {
+                    start -= length
+                    repeats += 1
+                }
+                let removed = count - start - length
+                if repeats >= minimumRepeats, removed > mostRemoved {
+                    mostRemoved = removed
+                    best = (start, unit)
+                }
+            }
+        }
+        guard let best else { return String(chars) }
+        return String(chars[..<best.start]) + String(best.unit)
+    }
+
+    private static let minimumRepeats = 3
+    private static let maximumRepeatLength = 40
+
+    /// 分段辨識的結果接起來時，前一段結尾和下一段開頭都是英文字母或數字就要補空格，
+    /// 不然會黏成「APIdeploy」。
+    static func needsSpaceBetween(_ previous: String, _ next: String) -> Bool {
+        guard let last = previous.last, let first = next.first else { return false }
+        return isLatinLetterOrDigit(last) && isLatinLetterOrDigit(first)
+    }
+
+    private static func isLatinLetterOrDigit(_ character: Character) -> Bool {
+        character.isASCII && (character.isLetter || character.isNumber)
+    }
+
     private static let simplifiedOnly: [Character: Character] = {
         let chars = Array(ZhTWSimplifiedOnly.pairs)
         var table: [Character: Character] = [:]
