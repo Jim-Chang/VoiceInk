@@ -131,3 +131,9 @@ scripts/setup.sh check        # 安裝狀態
 - 2026-10-22 寫 plan。SHA256:`sherpa-onnx-v1.13.8-osx-arm64-shared-no-tts-lib.tar.bz2` 是 `f3e0cbd86cc3f38dad30c97921b40e9a8bcc6f2c943777eb76ad77176993e417`,`c-api.h`(v1.13.8)是 `2a1b95084be8fd1deb3228fcad2fd3f7f0258b64582f7402281ec174c7b7f4ce`,模型壓縮檔是 `c0d5aa5f8eeb686032345e180bedf39319dc2e0556781c6264bcadba8328a6e1`(和 release 的 `checksum.txt`、評測用的那份相同),解開後的 `model.int8.onnx` 是 `65a3fb9f5ad7bfb96bf69e0dc4481df97f6ee60513c1d94ce981ba6effd524b1`。
 - 2026-10-22 範圍:使用者在另一個對話決定「先把基礎架構做好」;Breeze2 要不要留著備用列為待決定。
 - 2026-10-22 使用者同意模型內建進 App。補充使用者體驗:不加開關,看辨識結果有沒有中文字、有沒有句號決定要不要補。用 sherpa-onnx 1.13.8 實測:「git push」「OK」會被補成「git push。」「OK。」,所以沒有中文字時不補;原文已有逗號時模型會再補一個(「好的，，」),所以先拿掉原有標點再給模型。
+- 2026-10-22 步驟 1–3 完成(commit `31416a5`、`25d3ab3`),裝到這台,模式的 AI 潤稿已關掉。
+  - Xcode 嵌入 dylib 沒問題,不用改靜態版。App 裡兩個 dylib 都用同一張 Apple Development 憑證重新簽名,`codesign --verify --deep --strict` 通過;App 從 159MB 變成 261MB。
+  - 離線核對:`scripts/bench/punct-ct.sh` 用 App 裡同一份 Swift 程式跑 91 段,和評測的 `C-ct-merged-int8.json` 逐字相同 91/91。
+  - 速度(2 執行緒,只算補標點):短句中位 2.0 毫秒(最大 2.7)、中 6.5 毫秒(最大 17.2)、長 29.5 毫秒(最大 97)。載入 0.11–0.14 秒。
+  - 記憶體:模型載入後常駐約 250MB(工具本身的 footprint 253MB),比預估的 100MB 大。載入只要 0.14 秒,要省記憶體可以改成閒置就卸載、開始錄音時再載入。
+  - 判斷要不要補、給模型的版本(拿掉全形標點、轉簡體)放在 `ZhTWPunctuation`,`scripts/test-punctuation.sh` 加了 8 個案例,23/23 通過。
