@@ -10,7 +10,7 @@
 欄位(秒):
   rec      錄音長度(按下快捷鍵到放開)
   gap      距離上一次貼上
-  asr      語音辨識
+  asr      語音辨識(Whisper 從開始辨識那行算;transcribe.cpp 的 TEA-ASR 用 ZhTWTiming 的 asr total 往回推)
   punct    辨識完直接補標點(CT-Transformer,ZhTWPunctuator);後面 pre 到 xpc 是舊的 AI 潤稿補標點(Breeze2)
   pre      辨識完到開始補標點(字詞替換等)
   chunks   長的逐字稿分成幾段補標點(其他補標點欄位是各段加總)
@@ -62,6 +62,8 @@ def group_dictations(events):
     """每次開始辨識算一次聽寫。
 
     - 錄音開始 = 之前最近一次顯示錄音面板。螢幕變動時重新擺放面板也會記一次「Showed」,不算。
+    - Whisper 有「Initiating local transcription」那行;transcribe.cpp(TEA-ASR)沒有,
+      用辨識完的 ZhTWTiming「asr total=」往回推開始時間。
     - 準備模型(*-prepare、CT 的 punct-load)發生在錄音開始時,算下一次聽寫的;補標點和貼上算目前這次的。
     - 沒講話的錄音只有辨識、沒有補標點和貼上,照樣一行。
     """
@@ -76,9 +78,18 @@ def group_dictations(events):
             previous_recorder_message = message
             continue
         if message.startswith("Initiating local transcription"):
-            current = {"rec_start": None, **upcoming, "asr_start": stamp}
+            current = {"rec_start": None, **upcoming, "asr_start": stamp, "_awaiting_asr": True}
             upcoming = {}
             dictations.append(current)
+        elif category == "ZhTWTiming" and message.startswith("asr "):
+            values = dict(FIELDS.findall(message))
+            if current is None or not current.pop("_awaiting_asr", False):
+                total = number(values, "total") or 0
+                current = {"rec_start": None, **upcoming, "asr_start": stamp - timedelta(seconds=total)}
+                upcoming = {}
+                dictations.append(current)
+            current["asr"] = values
+            current.setdefault("asr_end", stamp)
         elif category == "ZhTWTiming":
             name = message.split(" ", 1)[0]
             target = upcoming if name.endswith("-prepare") or name == "punct-load" else current
@@ -229,11 +240,13 @@ def main():
         print("  ".join(row))
         previous_paste = d.get("paste") or previous_paste
 
-    prepares = [d for d in dictations if "engine-prepare" in d or "punct-load" in d]
+    prepares = [d for d in dictations if "engine-prepare" in d or "punct-load" in d or "asr-prepare" in d]
     if prepares:
         print("\n模型載入:")
         for d in prepares:
             started = f"{d['rec_start'] or d['asr_start']:%H:%M:%S}"
+            if "asr-prepare" in d:
+                print(f"  {started}  辨識 {d.get('asr', {}).get('model', '')}  load={d['asr-prepare'].get('load')}")
             if "punct-load" in d:
                 print(f"  {started}  補標點 CT  load={d['punct-load'].get('load')}")
             if "engine-prepare" in d:

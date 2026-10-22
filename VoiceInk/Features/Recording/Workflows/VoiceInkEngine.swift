@@ -395,8 +395,13 @@ class VoiceInkEngine: NSObject, ObservableObject {
                                     try? await self.serviceRegistry.fluidAudioTranscriptionService.loadModel(
                                         for: fluidAudioModel)
                                 } else if let transcribeCppModel = currentModel as? TranscribeCppModel {
+                                    let loadStarted = ContinuousClock.now
                                     try? await self.serviceRegistry.transcribeCppTranscriptionService.loadModel(
                                         for: transcribeCppModel)
+                                    // voiceink-zhtw：計時（scripts/timing_report.py）
+                                    ZhTWTiming.logger.notice(
+                                        "asr-prepare load=\(ZhTWTiming.seconds(loadStarted.duration(to: .now)), privacy: .public)"
+                                    )
                                 }
 
                             }

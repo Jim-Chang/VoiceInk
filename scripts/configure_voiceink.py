@@ -1,13 +1,14 @@
 #!/usr/bin/python3
-"""把 VoiceInk 設定成「Breeze 繁中辨識 + 辨識完直接補標點（CT-Transformer）」。可重複執行。
+"""把 VoiceInk 設定成「TEA-ASR 繁中辨識 + 辨識完直接補標點（CT-Transformer）」。可重複執行。
 
 VoiceInk 必須先關掉（setup.sh configure 會處理），否則它結束時會把設定蓋回去。
 需要先完成 VoiceInk 的初始設定，讓它建立第一個模式（Mode）。
 
 會改的設定（UserDefaults 網域 com.prakashjoshipax.VoiceInk）：
   - CustomLanguagePrompts.zh  中文的 Whisper 提示詞：只在舊設定是原作者的簡體句子時改掉
-                              （這個 fork 的 App 內建預設已經是繁體，見 WhisperPrompt.swift）
-  - modeConfigurationsV2      預設模式：Breeze 模型、中文、AI 潤稿關掉、文字格式化關掉
+                              （這個 fork 的 App 內建預設已經是繁體，見 WhisperPrompt.swift；
+                              只有換回 Breeze 這類 Whisper 模型時才用到）
+  - modeConfigurationsV2      預設模式：TEA-ASR-1.1、中文、AI 潤稿關掉、文字格式化關掉
                               （補標點在辨識完就做了，見 ZhTWPunctuator，不靠 AI 潤稿；
                               文字格式化是給英文的，會在中文句號後面加空格、自動分段）
   - IsTranscriptionCleanupEnabled、TranscriptionRetentionMinutes
@@ -24,7 +25,7 @@ import sys
 import tempfile
 
 DOMAIN = "com.prakashjoshipax.VoiceInk"
-ASR_MODEL = "ggml-breeze-asr-25-q8_0"
+ASR_MODEL = "tea-asr-1.1"  # 換回 Breeze：ggml-breeze-asr-25-q8_0
 SIMPLIFIED_DEFAULT_ZH_PROMPT = "你好，最近好吗？见到你很高兴。"
 ZH_PROMPT = "你好，最近好嗎？見到你很高興。"
 

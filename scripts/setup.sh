@@ -1,9 +1,11 @@
 #!/bin/bash
-# 在一台新的 Apple Silicon Mac 上架起「VoiceInk + Breeze 繁中聽寫 + 本機補標點」（單一 App 版）。
+# 在一台新的 Apple Silicon Mac 上架起「VoiceInk + TEA-ASR 繁中聽寫 + 本機補標點」（單一 App 版）。
 # 每一步都會先檢查，做過的就跳過，可以放心重複執行。
 #
 # 用法（在這個 repo 裡）：
-#   scripts/setup.sh             安裝全部：Xcode 工具、build VoiceInk、下載兩個模型
+#   scripts/setup.sh             安裝全部：Xcode 工具、build VoiceInk、下載模型
+#   scripts/setup.sh --with-breeze
+#                                另外下載備用的語音辨識模型 Breeze-ASR-25（1.7GB）
 #   scripts/setup.sh configure   寫入 VoiceInk 設定（要先在 VoiceInk 完成初始設定）
 #   scripts/setup.sh check       只檢查目前狀態，不改任何東西
 set -euo pipefail
@@ -11,7 +13,15 @@ set -euo pipefail
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_SUPPORT="$HOME/Library/Application Support/com.prakashjoshipax.VoiceInk"
 
-# 語音辨識：聯發科 Breeze-ASR-25（whisper.cpp 格式，社群轉檔）
+# 語音辨識：TEA-ASR-1.1（transcribe.cpp 的 GGUF，自己轉檔，見 docs/plan/2026-10-22-tea-asr.md）
+# 放的位置、檔名、大小、SHA256 要和 App 的 TranscribeCppModelCatalog.teaASR11 相同，App 才會當成已安裝
+TEA_DIR="$APP_SUPPORT/TranscribeCpp/tea-asr-1.1"
+TEA_FILE="TEA-ASR-1.1-Q8_0.gguf"
+TEA_URL="https://huggingface.co/dorajim15/TEA-ASR-1.1-transcribe-cpp/resolve/main/$TEA_FILE"
+TEA_SIZE=2184763808
+TEA_SHA256="2e4aeb45c9e7f421d99909e29e49a54e204d70ed0e77bebc3f18a135d78298d0"
+
+# 備用語音辨識（選用，--with-breeze）：聯發科 Breeze-ASR-25（whisper.cpp 格式，社群轉檔）
 ASR_DIR="$APP_SUPPORT/WhisperModels"
 ASR_FILE="ggml-breeze-asr-25-q8_0.bin"
 ASR_URL="https://huggingface.co/shdennlin/breeze-asr-25-ggml/resolve/main/$ASR_FILE"
@@ -36,13 +46,18 @@ has_metal()     { xcrun -f metal > /dev/null 2>&1; }
 has_app()       { [[ -d /Applications/VoiceInk.app ]]; }
 app_has_zhtw()  { [[ -f /Applications/VoiceInk.app/Contents/Resources/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/model.int8.onnx ]]; }
 has_asr()       { [[ -f "$ASR_DIR/$ASR_FILE" ]]; }
+# 和 App 的判斷一樣：大小相符、.sha256 檔的內容相符（下載時已經核對過 SHA256）
+has_tea()       {
+    [[ -f "$TEA_DIR/$TEA_FILE" && "$(stat -f %z "$TEA_DIR/$TEA_FILE")" == "$TEA_SIZE" ]] &&
+        [[ "$(tr -d '[:space:]' < "$TEA_DIR/.$TEA_FILE.sha256" 2>/dev/null)" == "$TEA_SHA256" ]]
+}
 has_llm()       { [[ -f "$LLM_DIR/model.safetensors" && -f "$LLM_DIR/tokenizer.json" && -f "$LLM_DIR/config.json" ]]; }
 configured()    {
     defaults export com.prakashjoshipax.VoiceInk - 2>/dev/null | /usr/bin/python3 -c '
 import plistlib, json, sys
 p = plistlib.loads(sys.stdin.buffer.read())
 m = next(x for x in json.loads(p["modeConfigurationsV2"]) if x.get("isDefault"))
-sys.exit(0 if m.get("selectedTranscriptionModelName") == "ggml-breeze-asr-25-q8_0" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") and not m.get("isTextFormattingEnabled") and p.get("IsTranscriptionCleanupEnabled") and p.get("TranscriptionRetentionMinutes") == 4320 else 1)' 2>/dev/null
+sys.exit(0 if m.get("selectedTranscriptionModelName") == "tea-asr-1.1" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") and not m.get("isTextFormattingEnabled") and p.get("IsTranscriptionCleanupEnabled") and p.get("TranscriptionRetentionMinutes") == 4320 else 1)' 2>/dev/null
 }
 
 check() {
@@ -56,7 +71,8 @@ check() {
     if app_has_zhtw; then ok "VoiceInk.app（含繁中補標點）"
     elif has_app; then todo "VoiceInk.app 是沒有繁中補標點的版本（scripts/update.sh --no-pull 重裝）"
     else todo "VoiceInk.app"; fi
-    if has_asr; then ok "語音辨識模型 $ASR_FILE"; else todo "語音辨識模型 $ASR_FILE"; fi
+    if has_tea; then ok "語音辨識模型 TEA-ASR-1.1"; else todo "語音辨識模型 TEA-ASR-1.1"; fi
+    if has_asr; then ok "備用語音辨識模型 $ASR_FILE"; else echo "  - 備用語音辨識模型 Breeze-ASR-25 沒裝（選用：scripts/setup.sh --with-breeze）"; fi
     if has_llm; then ok "補標點模型 Breeze2-3B"; else todo "補標點模型 Breeze2-3B"; fi
     if configured; then ok "VoiceInk 設定"; else todo "VoiceInk 設定（scripts/setup.sh configure）"; fi
 }
@@ -98,14 +114,27 @@ install_all() {
     app_has_zhtw || "$SCRIPTS_DIR/update.sh" --no-pull
     ok "VoiceInk.app"
 
-    step "語音辨識模型（Breeze-ASR-25，1.7GB）"
-    if ! has_asr; then
-        mkdir -p "$ASR_DIR"
-        curl -L --fail -C - -o "$ASR_DIR/$ASR_FILE.part" "$ASR_URL"
-        echo "$ASR_SHA256  $ASR_DIR/$ASR_FILE.part" | shasum -a 256 -c -
-        mv "$ASR_DIR/$ASR_FILE.part" "$ASR_DIR/$ASR_FILE"
+    step "語音辨識模型（TEA-ASR-1.1，2.2GB）"
+    if ! has_tea; then
+        mkdir -p "$TEA_DIR"
+        curl -L --fail -C - -o "$TEA_DIR/$TEA_FILE.part" "$TEA_URL"
+        echo "$TEA_SHA256  $TEA_DIR/$TEA_FILE.part" | shasum -a 256 -c -
+        # 和 App 下載完一樣：先寫 .sha256 再把模型檔放到位
+        printf '%s' "$TEA_SHA256" > "$TEA_DIR/.$TEA_FILE.sha256"
+        mv "$TEA_DIR/$TEA_FILE.part" "$TEA_DIR/$TEA_FILE"
     fi
-    ok "$ASR_DIR/$ASR_FILE"
+    ok "$TEA_DIR/$TEA_FILE"
+
+    if [[ $WITH_BREEZE == 1 ]]; then
+        step "備用語音辨識模型（Breeze-ASR-25，1.7GB）"
+        if ! has_asr; then
+            mkdir -p "$ASR_DIR"
+            curl -L --fail -C - -o "$ASR_DIR/$ASR_FILE.part" "$ASR_URL"
+            echo "$ASR_SHA256  $ASR_DIR/$ASR_FILE.part" | shasum -a 256 -c -
+            mv "$ASR_DIR/$ASR_FILE.part" "$ASR_DIR/$ASR_FILE"
+        fi
+        ok "$ASR_DIR/$ASR_FILE"
+    fi
 
     step "補標點模型（Breeze2-3B，2GB）"
     has_llm || download_llm
@@ -129,6 +158,7 @@ configure() {
         osascript -e 'quit app "VoiceInk"'
         while pgrep -x VoiceInk > /dev/null; do sleep 0.5; done
     fi
+    has_tea || echo "  注意：TEA-ASR-1.1 還沒下載（scripts/setup.sh），模式會選到還沒裝的模型"
     mkdir -p "$APP_SUPPORT/zhtw-backups"
     defaults export com.prakashjoshipax.VoiceInk \
         "$APP_SUPPORT/zhtw-backups/prefs-$(date +%Y%m%d-%H%M%S).plist" 2>/dev/null || true
@@ -137,9 +167,18 @@ configure() {
     echo "  設定備份在 $APP_SUPPORT/zhtw-backups/"
 }
 
-case "${1:-install}" in
+COMMAND=install
+WITH_BREEZE=0
+for arg in "$@"; do
+    case "$arg" in
+        install|configure|check) COMMAND=$arg ;;
+        --with-breeze) WITH_BREEZE=1 ;;
+        *) echo "用法：scripts/setup.sh [install|configure|check] [--with-breeze]"; exit 1 ;;
+    esac
+done
+
+case "$COMMAND" in
     install) install_all; check ;;
     configure) configure ;;
     check) check ;;
-    *) echo "用法：scripts/setup.sh [install|configure|check]"; exit 1 ;;
 esac

@@ -113,6 +113,10 @@ class TranscriptionPipeline {
             }
             text = TranscriptionOutputFilter.filter(text)
             let transcriptionDuration = Date().timeIntervalSince(transcriptionStart)
+            // voiceink-zhtw：計時（scripts/timing_report.py）。transcribe.cpp 自己的紀錄只到整數秒。
+            ZhTWTiming.logger.notice(
+                "asr model=\(model.name, privacy: .public) total=\(String(format: "%.3f", transcriptionDuration), privacy: .public)"
+            )
 
             if shouldCancel() {
                 await finishCanceledTranscription()
