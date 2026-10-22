@@ -77,6 +77,7 @@ python3 -I scripts/timing_report.py --last 1h --load load.tsv
 | `punct_ct.py`、`punct-tool.sh` | 專門的標點模型(CT-Transformer,sherpa-onnx)補標點,再用 App 的合併邏輯插回繁體原文 |
 | `punct-ct.sh` | 編譯 App 裡同一份 CT 補標點(`ZhTWPunctuator`)成命令列工具,離線跑一批逐字稿;列有 `model` 欄時先照 App 的流程跑 `ZhTWTranscript.clean` |
 | `asr_models_run.sh`、`tc_bench.c`、`asr_models.py`、`tea_prepare.py` | 換語音辨識模型的評測:用 transcribe.cpp 跑一批錄音、統計、盲測;`tea_prepare.py` 整理 TEA-ASR 的 tokenizer 再轉 GGUF(見 [investigations/2026-10-22-asr-models.md](investigations/2026-10-22-asr-models.md)) |
+| `tea_vocab_run.sh`、`tea_vocab_diff.py`(`tc_bench.c --vocabulary-file`) | TEA 詞彙表的量測:同一批錄音跑舊版 transcribe.cpp、新版、新版加詞彙表,找出兩組結果不同的地方、統計時間和記憶體(見 [plan/2026-10-22-tea-vocabulary.md](plan/2026-10-22-tea-vocabulary.md)) |
 | `sample_load.py` | 每 0.5 秒記 GPU、CPU 負載 |
 
 跑評測時不要同時聽寫,也不要同時跑兩個評測(互搶 GPU,時間會失真)。

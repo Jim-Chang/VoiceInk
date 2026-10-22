@@ -12,7 +12,14 @@
 // 用法:
 //   tc_bench -m model.gguf -i list.tsv -o out.jsonl [-l zh] [--itn on|off|default]
 //            [--max-chunk-sec 0] [--boundary-sec 3] [--window 1600] [--n-ctx 0] [--backend metal|cpu]
+//            [--vocabulary-file terms.txt] [--prompt 文字]
 // list.tsv 每行「id<TAB>wav 路徑」,wav 要 16kHz。輸出每段一行 JSON。
+//
+// 詞彙表(--vocabulary-file,一行一個詞)和 --prompt 要 transcribe.cpp 0.3.0 以後的標頭檔,編譯時加
+// -DTC_PROMPTING(TEA 詞彙表的量測,見 docs/plan/2026-10-22-tea-vocabulary.md)。也可以連結 release 的
+// xcframework(FW=.../TranscribeCpp.xcframework/macos-arm64_x86_64):
+//   cc -O2 [-DTC_PROMPTING] -I $FW/CTranscribe.framework/Headers -I $TC/examples/common tc_bench.c \
+//      -F $FW -framework CTranscribe -Wl,-rpath,$FW -o tc_bench
 
 #include "transcribe.h"
 
@@ -78,7 +85,31 @@ typedef struct {
     const char * language;
     enum transcribe_itn_mode itn;
     int max_chunk, boundary, window, n_ctx;
+    const char ** vocabulary;
+    int n_vocabulary;
+    const char * prompt;
 } opts_t;
+
+// 一行一個詞,略過空行;不排序、不去重(照檔案的順序送,檔案自己整理好)。
+static int load_terms(const char * path, const char *** out) {
+    FILE * f = fopen(path, "r");
+    if (!f) return -1;
+    char line[1024];
+    int n = 0, cap = 0;
+    const char ** terms = NULL;
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (!line[0]) continue;
+        if (n == cap) {
+            cap = cap ? cap * 2 : 64;
+            terms = realloc(terms, cap * sizeof(char *));
+        }
+        terms[n++] = strdup(line);
+    }
+    fclose(f);
+    *out = terms;
+    return n;
+}
 
 typedef struct {
     double wall_ms, session_ms, mel_ms, encode_ms, decode_ms;
@@ -122,6 +153,11 @@ static void run_one(struct transcribe_model * model, const float * pcm, int n, c
         rp.itn = o->itn;
         rp.language = o->language;
         rp.keep_special_tags = false;
+#ifdef TC_PROMPTING
+        rp.vocabulary = o->vocabulary;
+        rp.n_vocabulary = o->n_vocabulary;
+        rp.prompt = o->prompt;
+#endif
         st = transcribe_run(session, pcm + start, end - start, &rp);
         if (st != TRANSCRIBE_OK) {
             snprintf(r->status, sizeof(r->status), "run: %s", transcribe_status_string(st));
@@ -157,7 +193,7 @@ static void run_one(struct transcribe_model * model, const float * pcm, int n, c
 
 int main(int argc, char ** argv) {
     const char * model_path = NULL, * list_path = NULL, * out_path = NULL;
-    opts_t o = { NULL, TRANSCRIBE_ITN_MODE_DEFAULT, 0, 3, 1600, 0 };
+    opts_t o = { NULL, TRANSCRIBE_ITN_MODE_DEFAULT, 0, 3, 1600, 0, NULL, 0, NULL };
     transcribe_backend_request backend = TRANSCRIBE_BACKEND_METAL;
     for (int i = 1; i < argc; ++i) {
         const char * a = argv[i];
@@ -175,9 +211,21 @@ int main(int argc, char ** argv) {
         else if (!strcmp(a, "--window") && v) { o.window = atoi(v); ++i; }
         else if (!strcmp(a, "--n-ctx") && v) { o.n_ctx = atoi(v); ++i; }
         else if (!strcmp(a, "--backend") && v) { backend = !strcmp(v, "cpu") ? TRANSCRIBE_BACKEND_CPU : TRANSCRIBE_BACKEND_METAL; ++i; }
+        else if (!strcmp(a, "--vocabulary-file") && v) {
+            o.n_vocabulary = load_terms(v, &o.vocabulary);
+            if (o.n_vocabulary < 0) { fprintf(stderr, "cannot open %s\n", v); return 1; }
+            ++i;
+        }
+        else if (!strcmp(a, "--prompt") && v) { o.prompt = v; ++i; }
         else { fprintf(stderr, "unknown or incomplete option: %s\n", a); return 2; }
     }
     o.boundary *= 16000;
+#ifndef TC_PROMPTING
+    if (o.n_vocabulary > 0 || o.prompt) {
+        fprintf(stderr, "--vocabulary-file / --prompt need a build with -DTC_PROMPTING (transcribe.cpp >= 0.3.0)\n");
+        return 2;
+    }
+#endif
     if (!model_path || !list_path || !out_path) {
         fprintf(stderr, "usage: %s -m model.gguf -i list.tsv -o out.jsonl [options]\n", argv[0]);
         return 2;
@@ -227,7 +275,8 @@ int main(int argc, char ** argv) {
         result_t r;
         run_one(model, pcm, n, &o, &r);
         if (i < 0) {
-            fprintf(out, "{\"warmup\":true,\"load_ms\":%.1f,\"wall_ms\":%.1f}\n", load_ms, r.wall_ms);
+            fprintf(out, "{\"warmup\":true,\"load_ms\":%.1f,\"wall_ms\":%.1f,\"n_vocabulary\":%d,\"prompt\":%s}\n",
+                    load_ms, r.wall_ms, o.n_vocabulary, o.prompt ? "true" : "false");
             fprintf(stderr, "load %.0f ms, warmup %.0f ms\n", load_ms, r.wall_ms);
         } else {
             fprintf(out, "{\"id\":");
