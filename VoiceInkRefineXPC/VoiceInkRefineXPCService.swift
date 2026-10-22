@@ -11,7 +11,6 @@ final class VoiceInkRefineXPCService: NSObject, VoiceInkRefineXPCProtocol {
         _ requestData: NSData,
         withReply reply: @escaping (NSError?) -> Void
     ) {
-        let receivedAt = ContinuousClock.now
         let request: VoiceInkRefinePrepareRequest
         do {
             request = try JSONDecoder().decode(
@@ -34,9 +33,6 @@ final class VoiceInkRefineXPCService: NSObject, VoiceInkRefineXPCProtocol {
                 try await engine.prepare(
                     modelDirectory: URL(fileURLWithPath: request.modelDirectoryPath),
                     systemPrompt: request.systemPrompt
-                )
-                ZhTWTiming.logger.notice(
-                    "xpc-prepare id=\(ZhTWTiming.shortID(request.requestID), privacy: .public) total=\(ZhTWTiming.seconds(ContinuousClock.now - receivedAt), privacy: .public)"
                 )
                 reply(nil)
             } catch {
@@ -63,7 +59,6 @@ final class VoiceInkRefineXPCService: NSObject, VoiceInkRefineXPCProtocol {
         _ requestData: NSData,
         withReply reply: @escaping (NSData?, NSError?) -> Void
     ) {
-        let receivedAt = ContinuousClock.now
         let request: VoiceInkRefineEnhanceRequest
         do {
             request = try JSONDecoder().decode(
@@ -87,11 +82,7 @@ final class VoiceInkRefineXPCService: NSObject, VoiceInkRefineXPCProtocol {
                 let output = try await engine.enhance(
                     transcript: request.transcript,
                     modelDirectory: URL(fileURLWithPath: request.modelDirectoryPath),
-                    systemPrompt: request.systemPrompt,
-                    requestID: request.requestID
-                )
-                ZhTWTiming.logger.notice(
-                    "xpc-enhance id=\(ZhTWTiming.shortID(request.requestID), privacy: .public) total=\(ZhTWTiming.seconds(ContinuousClock.now - receivedAt), privacy: .public)"
+                    systemPrompt: request.systemPrompt
                 )
                 let response = VoiceInkRefineEnhanceResponse(
                     requestID: request.requestID,

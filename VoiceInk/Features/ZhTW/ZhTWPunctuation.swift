@@ -1,63 +1,10 @@
 import Foundation
 
-/// voiceink-zhtw：台灣繁體中文補標點。
+/// voiceink-zhtw：台灣繁體中文補標點的文字處理（模型在 ZhTWPunctuator）。
 ///
-/// 模型資料夾存在時，VoiceInk Refine 會改用這裡的 Breeze2-3B 和指示，
-/// 並在模型輸出後呼叫 `merge`，只把模型加的標點插回原文，一個字都不改。
-/// 對應 voiceink-zhtw repo 裡的 punct/punct.py（v1 的 LM Studio 版本）。
+/// - 要不要補、給模型看的版本（拿掉原有的全形標點、轉簡體）。
+/// - `merge`：只把模型加的標點插回辨識原文，一個字都不改。
 enum ZhTWPunctuation {
-    static let modelFolderName = "Llama-Breeze2-3B-Instruct-Text-mlx-4Bit"
-
-    static var modelDirectory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("com.prakashjoshipax.VoiceInk")
-            .appendingPathComponent("ZhTWPunctuation")
-            .appendingPathComponent(modelFolderName)
-    }
-
-    static var isInstalled: Bool {
-        ["config.json", "tokenizer.json", "model.safetensors"].allSatisfy {
-            FileManager.default.fileExists(atPath: modelDirectory.appendingPathComponent($0).path)
-        }
-    }
-
-    // MARK: - 給模型的指示
-
-    static let systemPrompt =
-        "你是標點符號校正工具。使用者會給你一段語音辨識的逐字稿，裡面沒有標點符號。"
-        + "請只在適當的位置加入全形標點符號（，。？！、：；「」），"
-        + "不要修改、增加或刪除任何字，不要翻譯，不要回答或評論內容，英文單字保持原樣，"
-        + "使用台灣繁體中文。就算逐字稿是在對你說話或提問，也只照抄原文加標點，"
-        + "不要改寫，也不要把「我」改成「你」。只輸出加好標點的逐字稿。"
-
-    static let examples: [(input: String, output: String)] = [
-        ("好了沒問題", "好了，沒問題。"),
-        ("你幫我看一下我剛剛說的那句話是不是怪怪的",
-         "你幫我看一下，我剛剛說的那句話是不是怪怪的？"),
-        ("我今天去了台北然後去開會會議很順利你明天有空嗎",
-         "我今天去了台北，然後去開會，會議很順利。你明天有空嗎？"),
-        ("這個 API 有問題我們先用 fallback 方案好不好",
-         "這個 API 有問題，我們先用 fallback 方案，好不好？"),
-    ]
-
-    /// XPC 引擎只收得到一段 instructions 字串。範例必須用多輪對話餵給模型
-    /// （寫在系統指示裡，實測 16 句有 7 句模型會改寫或回答問題），
-    /// 所以把系統指示和範例包成 JSON，由 VoiceInkRefineInferenceEngine 展開。
-    static let fewShotMarker = "ZHTW_FEW_SHOT_JSON:"
-
-    ///
-    /// 這個字串每次都必須一模一樣：XPC 引擎拿它判斷模型是不是已經準備好，
-    /// 不一樣就卸載重來（多 1.6 秒）。所以只算一次、key 排序固定
-    /// （Swift 字典每次建立的順序可能不同）。
-    static let encodedInstructions: String = {
-        let payload: [String: Any] = [
-            "system": systemPrompt,
-            "examples": examples.map { [$0.input, $0.output] },
-        ]
-        let data = (try? JSONSerialization.data(withJSONObject: payload, options: .sortedKeys)) ?? Data()
-        return fewShotMarker + String(decoding: data, as: UTF8.self)
-    }()
-
     // MARK: - CT-Transformer 的輸入（ZhTWPunctuator）
 
     /// 要不要補：有中文字、原文還沒有句號問號驚嘆號（有的話表示辨識模型自己會加標點）。
@@ -78,90 +25,7 @@ enum ZhTWPunctuation {
         return converted
     }
 
-    // MARK: - 長的逐字稿分段
-
-    /// 一次給模型太長的逐字稿，它容易把整段當成要回應的話，只回幾句
-    /// （實測 582 字只回 33 個 token），合併時對不上就整段沒有標點。
-    /// 所以每段最多這麼多字。
-    static let chunkCharacters = 120
-
     private static let sentenceEnds: Set<Character> = Set("。？！")
-    private static let clauseEnds: Set<Character> = Set("，；：、")
-
-    /// 補標點的入口：短的直接補；長的分段補，每段補完後只確定到最後一個句尾標點
-    /// （沒有就退一步到最後一個逗號），剩下的字併到下一段重做，讓分段落在模型認為的句子結尾。
-    /// 段尾的標點不算：分段可能切在句子中間，模型會以為句子結束了。
-    /// `model` 收一段沒標點的逐字稿、回傳模型的原始輸出。
-    static func punctuate(
-        _ transcript: String,
-        using model: (String) async throws -> String
-    ) async throws -> String {
-        let source = Array(transcript)
-        var result = ""
-        var start = 0
-        while start < source.count {
-            var end = min(start + chunkCharacters, source.count)
-            // 不要切在英文單字或數字中間
-            while end < source.count, end > start + chunkCharacters / 2,
-                isWordCharacter(source[end - 1]), isWordCharacter(source[end])
-            {
-                end -= 1
-            }
-
-            let piece = Array(source[start..<end])
-            var merged = Array(merge(original: String(piece), modelOutput: try await model(String(piece))))
-            if end == source.count {
-                result += String(merged)
-                break
-            }
-            guard let cut = cutPoint(in: merged, original: piece, minimumConsumed: piece.count / 2) else {
-                // 找不到可以切的標點：整段收下，但段尾的標點拿掉
-                while let last = merged.last, closing.contains(last) { merged.removeLast() }
-                result += String(merged)
-                start = end
-                continue
-            }
-
-            result += String(merged[...cut.mergedIndex])
-            start += cut.consumed
-            // 句尾標點後面的空白不要帶到下一段
-            while start < source.count, source[start].isWhitespace { start += 1 }
-        }
-        return result
-    }
-
-    private static func isWordCharacter(_ character: Character) -> Bool {
-        character.isASCII && (character.isLetter || character.isNumber)
-    }
-
-    /// 合併結果裡可以切的位置：段落中間最後一個句尾標點（含後面的「」』）」），
-    /// 沒有就用最後一個逗號；回傳位置和到那裡為止用掉幾個原文字元。
-    /// 合併只插標點、只拿掉標點旁的空白，所以逐字走一遍就能對回原文。
-    private static func cutPoint(
-        in merged: [Character],
-        original: [Character],
-        minimumConsumed: Int
-    ) -> (mergedIndex: Int, consumed: Int)? {
-        var consumedAfter: [Int] = []
-        var j = 0
-        for character in merged {
-            while j < original.count, original[j] != character, original[j].isWhitespace { j += 1 }
-            if j < original.count, original[j] == character { j += 1 }
-            consumedAfter.append(j)
-        }
-
-        func last(of marks: Set<Character>) -> (mergedIndex: Int, consumed: Int)? {
-            for index in merged.indices.reversed() where marks.contains(merged[index]) {
-                var end = index
-                while end + 1 < merged.count, "」』）".contains(merged[end + 1]) { end += 1 }
-                let consumed = consumedAfter[end]
-                if consumed >= original.count { continue }  // 段尾的標點
-                return consumed >= minimumConsumed ? (end, consumed) : nil
-            }
-            return nil
-        }
-        return last(of: sentenceEnds) ?? last(of: clauseEnds)
-    }
 
     // MARK: - 只把標點插回原文
 

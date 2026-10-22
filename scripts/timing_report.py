@@ -11,17 +11,7 @@
   rec      錄音長度(按下快捷鍵到放開)
   gap      距離上一次貼上
   asr      語音辨識(Whisper 從開始辨識那行算;transcribe.cpp 的 TEA-ASR 用 ZhTWTiming 的 asr total 往回推)
-  punct    辨識完直接補標點(CT-Transformer,ZhTWPunctuator);後面 pre 到 xpc 是舊的 AI 潤稿補標點(Breeze2)
-  pre      辨識完到開始補標點(字詞替換等)
-  chunks   長的逐字稿分成幾段補標點(其他補標點欄位是各段加總)
-  queue    等前一個補標點動作做完
-  idle     補標點模型距離上次工作的閒置時間;warm=0 表示這次要重新載入
-  pfx      1 = 用了 prefix cache(固定的指示和範例沒有重讀)
-  prep     補標點前確認模型已載入
-  prompt   讀入指示和逐字稿(token 數/秒數)
-  gen      產生文字(token 數/秒數)
-  other    引擎裡其他時間(套用對話範本等)
-  xpc      App 送出到收到 XPC 回覆
+  punct    補標點(CT-Transformer,ZhTWPunctuator)
   paste    補標點完到貼上
   total    放開快捷鍵到貼上
   bgGPU    錄音期間 GPU 平均使用率(有 --load 時)
@@ -97,9 +87,8 @@ def group_dictations(events):
                 continue
             values = dict(FIELDS.findall(message))
             values["_at"] = stamp
-            target[name] = values
-            # 長的逐字稿分段補標點,每段各一筆
-            target.setdefault(name + "[]", []).append(values)
+            # 歷史紀錄重新辨識也會補標點、但沒有辨識那行,留第一筆(這次聽寫自己的)
+            target.setdefault(name, values)
         elif current is None:
             continue
         elif message.startswith("Whisper transcription completed"):
@@ -140,25 +129,6 @@ def number(values, key):
         return None
 
 
-def combined(d, name):
-    """把分段的計時加總;warm/idle/thermal/qos/prefix 用第一段的"""
-    parts = d.get(name + "[]", [])
-    if not parts:
-        return {}
-    out = dict(parts[0])
-    for key in ("queue", "xpc", "prepare", "encode", "prompt", "generate", "total",
-                "promptTokens", "outputTokens"):
-        values = [number(part, key) for part in parts]
-        if all(v is not None for v in values):
-            total = sum(values)
-            out[key] = str(int(total)) if key.endswith("Tokens") else total
-    out["_at"] = parts[-1]["_at"]
-    out["_first_at"] = parts[0]["_at"]
-    out["_first"] = parts[0]
-    out["_chunks"] = len(parts)
-    return out
-
-
 def background_load(samples, start, end):
     if not samples or not start or not end:
         return None, ""
@@ -189,50 +159,24 @@ def main():
     dictations = group_dictations(read_events(args))
     samples = read_load(args.load) if args.load else []
 
-    header = ["time", "rec", "gap", "asr", "punct", "pre", "chunks", "queue", "warm", "idle", "pfx", "prep",
-              "prompt", "gen", "other", "xpc", "paste", "total", "therm", "qos"]
+    header = ["time", "rec", "gap", "asr", "punct", "paste", "total"]
     if samples:
         header += ["bgGPU", "bgTop"]
-    print("  ".join(h.rjust(5) if h not in ("time", "prompt", "gen", "bgTop") else h.ljust(8) for h in header))
+    print("  ".join(h.ljust(8) if h in ("time", "bgTop") else h.rjust(5) for h in header))
 
     previous_paste = None
     for d in dictations:
-        client = combined(d, "client-enhance")
-        engine = combined(d, "engine-enhance")
-        queue, xpc = number(client, "queue"), number(client, "xpc")
-        requested_at = None
-        first = client.get("_first", {})
-        if first and number(first, "queue") is not None and number(first, "xpc") is not None:
-            requested_at = first["_at"] - timedelta(seconds=number(first, "queue") + number(first, "xpc"))
-        merge_at = d.get("merge", {}).get("_at") or client.get("_at")
-
-        prompt_time, generate_time = number(engine, "prompt"), number(engine, "generate")
-        known = [number(engine, k) for k in ("prepare", "encode")] + [prompt_time, generate_time]
-        total_engine = number(engine, "total")
-        other = total_engine - sum(known) if total_engine is not None and None not in known else None
-
         started = d["rec_start"] or d["asr_start"]
+        punct = d.get("punct", {})
+        punct_end = punct.get("_at") or d.get("asr_end")
         row = [
             started.strftime("%H:%M:%S").ljust(8),
             fmt(seconds(d["rec_start"], d.get("asr_start"))),
-            fmt(seconds(previous_paste, started), 5) if previous_paste else fmt(None),
+            fmt(seconds(previous_paste, started)) if previous_paste else fmt(None),
             fmt(seconds(d.get("asr_start"), d.get("asr_end"))),
-            fmt(number(d.get("punct", {}), "total"), 6) if "punct" in d else fmt(None),
-            fmt(seconds(d.get("asr_end"), requested_at)),
-            fmt(str(client.get("_chunks", "-"))),
-            fmt(queue),
-            fmt(engine.get("warm", "-")),
-            fmt(number(engine, "idle")),
-            fmt(engine.get("prefix", "-")),
-            fmt(number(engine, "prepare")),
-            f"{engine.get('promptTokens', '-')}/{fmt(prompt_time, 0).strip()}".ljust(8),
-            f"{engine.get('outputTokens', '-')}/{fmt(generate_time, 0).strip()}".ljust(8),
-            fmt(other),
-            fmt(xpc),
-            fmt(seconds(merge_at, d.get("paste"))),
+            fmt(number(punct, "total")) if punct else fmt(None),
+            fmt(seconds(punct_end, d.get("paste"))),
             fmt(seconds(d.get("asr_start"), d.get("paste"))),
-            fmt(engine.get("thermal", "-")),
-            fmt(engine.get("qos", "-")),
         ]
         if samples:
             gpu, top = background_load(samples, d["rec_start"], d.get("asr_start"))
@@ -240,7 +184,7 @@ def main():
         print("  ".join(row))
         previous_paste = d.get("paste") or previous_paste
 
-    prepares = [d for d in dictations if "engine-prepare" in d or "punct-load" in d or "asr-prepare" in d]
+    prepares = [d for d in dictations if "punct-load" in d or "asr-prepare" in d]
     if prepares:
         print("\n模型載入:")
         for d in prepares:
@@ -249,9 +193,6 @@ def main():
                 print(f"  {started}  辨識 {d.get('asr', {}).get('model', '')}  load={d['asr-prepare'].get('load')}")
             if "punct-load" in d:
                 print(f"  {started}  補標點 CT  load={d['punct-load'].get('load')}")
-            if "engine-prepare" in d:
-                p = d["engine-prepare"]
-                print(f"  {started}  Breeze2  load={p.get('load')}  warmup={p.get('warmup')}  qos={p.get('qos')}")
 
 
 if __name__ == "__main__":

@@ -61,12 +61,7 @@ private enum VoiceInkRefineXPCOperationWaiter {
 }
 
 actor VoiceInkRefineXPCClient {
-    /// voiceink-zhtw：用完後模型留在記憶體多久才卸載（原本寫死 10 秒，短句常來不及在錄音時載入完）。
-    /// 調整：defaults write com.prakashjoshipax.VoiceInk ZhTWRefineKeepWarmSeconds -int 秒數
-    private static var warmGracePeriod: Duration {
-        let seconds = UserDefaults.standard.integer(forKey: "ZhTWRefineKeepWarmSeconds")
-        return .seconds(seconds > 0 ? seconds : 300)
-    }
+    private static let warmGracePeriod: Duration = .seconds(10)
 
     private let logger = Logger(
         subsystem: "com.prakashjoshipax.voiceink",
@@ -81,10 +76,8 @@ actor VoiceInkRefineXPCClient {
     private var idleShutdownToken: UUID?
 
     func prepare(modelDirectory: URL, systemPrompt: String) async throws {
-        let requestedAt = ContinuousClock.now
         try await acquireCancellableOperation()
         defer { releaseOperation() }
-        let acquiredAt = ContinuousClock.now
 
         try Task.checkCancellation()
         cancelIdleShutdown()
@@ -131,7 +124,6 @@ actor VoiceInkRefineXPCClient {
                 cancellationHandle.cancel()
             }
             try Task.checkCancellation()
-            logTiming("client-prepare", request.requestID, requestedAt, acquiredAt)
         } catch {
             invalidateIfCurrent(activeConnection)
             if Task.isCancelled {
@@ -147,10 +139,8 @@ actor VoiceInkRefineXPCClient {
         modelDirectory: URL,
         systemPrompt: String
     ) async throws -> String {
-        let requestedAt = ContinuousClock.now
         try await acquireCancellableOperation()
         defer { releaseOperation() }
-        let acquiredAt = ContinuousClock.now
 
         try Task.checkCancellation()
         cancelIdleShutdown()
@@ -220,7 +210,6 @@ actor VoiceInkRefineXPCClient {
                 )
             }
 
-            logTiming("client-enhance", request.requestID, requestedAt, acquiredAt)
             scheduleIdleShutdown(for: activeConnection)
             return response.output
         } catch {
@@ -459,19 +448,6 @@ actor VoiceInkRefineXPCClient {
         }
 
         return makeVoiceInkRefineXPCError(code, description: description)
-    }
-
-    /// voiceink-zhtw：延遲調查用。queue = 等前一個動作做完，xpc = 送出到收到回覆
-    private func logTiming(
-        _ operation: String,
-        _ requestID: UUID,
-        _ requestedAt: ContinuousClock.Instant,
-        _ acquiredAt: ContinuousClock.Instant
-    ) {
-        let finishedAt = ContinuousClock.now
-        ZhTWTiming.logger.notice(
-            "\(operation, privacy: .public) id=\(ZhTWTiming.shortID(requestID), privacy: .public) queue=\(ZhTWTiming.seconds(acquiredAt - requestedAt), privacy: .public) xpc=\(ZhTWTiming.seconds(finishedAt - acquiredAt), privacy: .public)"
-        )
     }
 
     private func logFailure(
