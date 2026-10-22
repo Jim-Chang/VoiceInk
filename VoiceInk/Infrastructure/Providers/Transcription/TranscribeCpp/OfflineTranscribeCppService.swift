@@ -130,22 +130,38 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
         chunkTranscripts.reserveCapacity(chunks.count)
         // voiceink-zhtw：一段碰到產生上限不拖垮整個檔案（docs/plan/2026-10-22-long-audio-segmentation.md）
         var guardStats = ChunkGuardStats()
-
-        for chunk in chunks {
-            try Task.checkCancellation()
-            let pieces = try await runGuarded(
-                chunk,
+        // voiceink-zhtw：段數多（轉錄音檔）時每 4 段一批（docs/plan/2026-10-23-tea-batch.md）
+        var batchedPieces: [[(text: String, language: String?)]]?
+        if chunks.count >= Self.minimumBatchedChunks {
+            batchedPieces = try await runBatched(
+                chunks,
                 model: nativeModel,
                 options: options,
                 energyWindowCount: artifact.boundaryEnergyWindowSamples,
                 stats: &guardStats
             )
+        }
+
+        for (index, chunk) in chunks.enumerated() {
+            try Task.checkCancellation()
+            let pieces: [(text: String, language: String?)]
+            if let batchedPieces {
+                pieces = batchedPieces[index]
+            } else {
+                pieces = try await runGuarded(
+                    chunk,
+                    model: nativeModel,
+                    options: options,
+                    energyWindowCount: artifact.boundaryEnergyWindowSamples,
+                    stats: &guardStats
+                )
+            }
             for piece in pieces where !piece.text.isEmpty {
                 chunkTranscripts.append((text: piece.text, language: piece.language ?? language))
             }
         }
         ZhTWTiming.logger.notice(
-            "asr-chunks chunks=\(chunks.count, privacy: .public) retried=\(guardStats.retried, privacy: .public) truncated=\(guardStats.truncated, privacy: .public)"
+            "asr-chunks chunks=\(chunks.count, privacy: .public) batch=\(batchedPieces == nil ? 1 : Self.batchSize, privacy: .public) retried=\(guardStats.retried, privacy: .public) truncated=\(guardStats.truncated, privacy: .public)"
         )
 
         logger.notice(
@@ -398,37 +414,115 @@ final class OfflineTranscribeCppService: TranscriptionService, @unchecked Sendab
         do {
             return [try await runChunk(samples, model: model, options: options)]
         } catch let error as TranscribeError where error.isTruncated {
-            let startSample = chunk.sourcePosition(ofOffset: offset)
-            guard samples.count >= Self.minimumRetrySamples else {
-                return [salvage(error.partial, startSample: startSample, sampleCount: samples.count, stats: &stats)]
-            }
-            stats.retried += 1
-            ZhTWTiming.logger.notice(
-                "asr-retry at=\(String(format: "%.1f", Double(startSample) / 16_000), privacy: .public) length=\(String(format: "%.1f", Double(samples.count) / 16_000), privacy: .public)"
+            return try await retryStopped(
+                error,
+                samples,
+                offset: offset,
+                of: chunk,
+                model: model,
+                options: options,
+                energyWindowCount: energyWindowCount,
+                stats: &stats
             )
-            // 上限設成原長度的六成、在中間兩成裡找最安靜的地方，剛好切成兩半
-            let halves = samples.energyAwareChunks(
-                maximumCount: samples.count * 6 / 10,
-                boundarySearchCount: samples.count * 2 / 10,
-                energyWindowCount: energyWindowCount
-            )
-            var results: [(text: String, language: String?)] = []
-            var halfOffset = offset
-            for half in halves {
-                try Task.checkCancellation()
-                results += try await runSplittingOnStop(
-                    half,
-                    offset: halfOffset,
-                    of: chunk,
-                    model: model,
-                    options: options,
-                    energyWindowCount: energyWindowCount,
-                    stats: &stats
-                )
-                halfOffset += half.count
-            }
-            return results
         }
+    }
+
+    /// `samples` 跑完停下（`error`）之後：段長 4 秒以上切兩半各跑一次（`runSplittingOnStop`，還是停下就再切），
+    /// 不到 4 秒留已辨識的字。一段一段跑和批次（`runBatched`）共用。
+    private func retryStopped(
+        _ error: TranscribeError,
+        _ samples: [Float],
+        offset: Int,
+        of chunk: TranscribeCppSpeechSegmenter.Chunk,
+        model: Model,
+        options: RunOptions,
+        energyWindowCount: Int,
+        stats: inout ChunkGuardStats
+    ) async throws -> [(text: String, language: String?)] {
+        let startSample = chunk.sourcePosition(ofOffset: offset)
+        guard samples.count >= Self.minimumRetrySamples else {
+            return [salvage(error.partial, startSample: startSample, sampleCount: samples.count, stats: &stats)]
+        }
+        stats.retried += 1
+        ZhTWTiming.logger.notice(
+            "asr-retry at=\(String(format: "%.1f", Double(startSample) / 16_000), privacy: .public) length=\(String(format: "%.1f", Double(samples.count) / 16_000), privacy: .public)"
+        )
+        // 上限設成原長度的六成、在中間兩成裡找最安靜的地方，剛好切成兩半
+        let halves = samples.energyAwareChunks(
+            maximumCount: samples.count * 6 / 10,
+            boundarySearchCount: samples.count * 2 / 10,
+            energyWindowCount: energyWindowCount
+        )
+        var results: [(text: String, language: String?)] = []
+        var halfOffset = offset
+        for half in halves {
+            try Task.checkCancellation()
+            results += try await runSplittingOnStop(
+                half,
+                offset: halfOffset,
+                of: chunk,
+                model: model,
+                options: options,
+                energyWindowCount: energyWindowCount,
+                stats: &stats
+            )
+            halfOffset += half.count
+        }
+        return results
+    }
+
+    // MARK: - voiceink-zhtw：段數多時批次辨識（docs/plan/2026-10-23-tea-batch.md）
+
+    /// 8 段以上（約 4 分鐘以上的錄音）才批次。平常的聽寫只有一段；長短混在一起的少數幾段批次也不會比較快。
+    private static let minimumBatchedChunks = 8
+    /// 每批 4 段：1 小時 43 分的會議錄音比一段一段快 1.67 倍、尖峰記憶體多約 0.5GB；8 段沒有更快、多 1.2GB。
+    private static let batchSize = 4
+
+    /// 依長度由長到短排好、每 4 段送一次 `runBatch`，回傳照原本的段順序。長度相近的放同一批，
+    /// 短的段才不用補到最長那段的長度、陪它跑完（不排序只快 1.34 倍）。
+    /// 某段停下（鬼打牆）時照一段一段的方式切兩半重跑；一個檔案只有幾段，不再批次。其他錯誤照舊往外丟。
+    private func runBatched(
+        _ chunks: [TranscribeCppSpeechSegmenter.Chunk],
+        model: Model,
+        options: RunOptions,
+        energyWindowCount: Int,
+        stats: inout ChunkGuardStats
+    ) async throws -> [[(text: String, language: String?)]] {
+        let order = chunks.indices.sorted { a, b in
+            let (countA, countB) = (chunks[a].samples.count, chunks[b].samples.count)
+            return countA != countB ? countA > countB : a < b
+        }
+        var results = [[(text: String, language: String?)]](repeating: [], count: chunks.count)
+        var start = 0
+        while start < order.count {
+            try Task.checkCancellation()
+            let group = Array(order[start..<Swift.min(start + Self.batchSize, order.count)])
+            start += group.count
+            let session = try model.session()
+            let outcomes = try await session.runBatch(group.map { chunks[$0].samples }, options: options)
+            for (index, outcome) in zip(group, outcomes) {
+                switch outcome {
+                case .success(let transcript):
+                    results[index] = [
+                        (transcript.text.trimmingCharacters(in: .whitespacesAndNewlines), transcript.language)
+                    ]
+                case .failure(let error as TranscribeError) where error.isTruncated:
+                    results[index] = try await retryStopped(
+                        error,
+                        chunks[index].samples,
+                        offset: 0,
+                        of: chunks[index],
+                        model: model,
+                        options: options,
+                        energyWindowCount: energyWindowCount,
+                        stats: &stats
+                    )
+                case .failure(let error):
+                    throw error
+                }
+            }
+        }
+        return results
     }
 
     /// 錄音超過一段的上限（30 秒）、而且 VAD 設定（IsVADEnabled，和 Whisper、Parakeet 共用）開著時，
