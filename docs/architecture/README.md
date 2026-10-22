@@ -63,6 +63,7 @@ VoiceInk.app
 | `VoiceInk/Infrastructure/Providers/Enhancement/VoiceInkRefine/VoiceInkRefineXPCClient.swift` | 閒置卸載時間改成可設定,預設 5 分鐘;計時紀錄 |
 | `VoiceInk/Features/ZhTW/ZhTWTiming.swift`、`VoiceInkRefineXPC/ZhTWTiming.swift`(新增) | 延遲調查的計時紀錄(只記時間和數量) |
 | `VoiceInkRefineXPC/VoiceInkRefineXPCService.swift` | 計時紀錄 |
+| `VoiceInk/Infrastructure/Providers/Transcription/Whisper/WhisperPrompt.swift` | 中文提示詞的預設值改成繁體 |
 | `README.md` | 換成這個 fork 的說明 |
 
 ## 決策紀錄
@@ -70,7 +71,7 @@ VoiceInk.app
 - **2026-10-21 不用 Claude Code 內建的語音輸入。** 它的聽寫語言清單沒有中文,講普通話會輸出簡體,沒有設定能改(上游 issue [anthropics/claude-code#78728](https://github.com/anthropics/claude-code/issues/78728))。改用外部聽寫 App,把文字貼進輸入框。
 - **2026-10-21 選 VoiceInk + Breeze-ASR-25。** VoiceInk 開源(GPLv3)、能匯入 whisper.cpp 格式的模型;Breeze-ASR-25 針對台灣華語和中英夾雜,直接輸出繁體。macOS 內建聽寫能出繁體,但中文準確度沒有可靠數據。比較見 [../investigations/2026-10-21-dictation-app-and-asr.md](../investigations/2026-10-21-dictation-app-and-asr.md)。
 - **2026-10-21 自己 build VoiceInk。** 官網版要買授權(25 美元起);自己 build 免費、合法,也才能改程式。
-- **2026-10-21 中文 Whisper 提示詞改成繁體。** VoiceInk 內建的中文提示詞是簡體,把 Breeze 帶成簡體輸出(見 [../investigations/2026-10-21-traditional-output.md](../investigations/2026-10-21-traditional-output.md))。
+- **2026-10-21 中文 Whisper 提示詞改成繁體。** VoiceInk 內建的中文提示詞是簡體,把 Breeze 帶成簡體輸出(見 [../investigations/2026-10-21-traditional-output.md](../investigations/2026-10-21-traditional-output.md))。2026-10-22 起直接改 App 內建的預設值(`WhisperPrompt.swift`),新裝的 App 不用另外設定。
 - **2026-10-21 v1:LM Studio + Breeze2-3B 補標點(兩個 App)。** 比較 Qwen3.5-2B、Qwen3.5-4B、Breeze2-3B 後選 Breeze2(最快、品質接近 4B、繁中特化)。VoiceInk 用 Local CLI 呼叫 Python 腳本,腳本呼叫 LM Studio。見 [../plan/2026-10-21-v1-lmstudio-two-apps.md](../plan/2026-10-21-v1-lmstudio-two-apps.md)。
 - **2026-10-21 合併時只取「前後字相鄰」的標點。** Breeze2 會把對話口吻的句子改寫(「我」改成「你」),原本整句退回原文;改成只採用可靠位置的標點。
 - **2026-10-21 v2:改成單一 App。** 發現 VoiceInk 內建的 VoiceInk Refine 就是 App 內的 MLX 語言模型引擎,讓它載入 Breeze2 即可,拿掉 LM Studio、Python 腳本、背景伺服器。見 [../investigations/2026-10-21-single-app-via-refine.md](../investigations/2026-10-21-single-app-via-refine.md)、[../plan/2026-10-21-v2-single-app.md](../plan/2026-10-21-v2-single-app.md)。
@@ -83,6 +84,7 @@ VoiceInk.app
 - **2026-10-21 長的逐字稿分段補標點(每段最多 120 字)。** 太長時 Breeze2 會把整段當成要回應的話,合併對不上就整段沒有標點(582 字的實例)。
 - **2026-10-21 語音辨識維持 Breeze-ASR-25 q8_0 + Metal。** q5、q4 沒變快反而錯更多;Core ML 編碼器更慢且第一次要編譯 14.5 分鐘;只處理實際長度錯誤率約 20%。見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md) 實驗 B。
 - **2026-10-22 補標點換成 CT-Transformer int8(sherpa-onnx)。** 使用者盲測 15 題:CT 8 題較好、Breeze2 3 題、差不多 4 題;每段 2–35 毫秒(Breeze2 0.26–2.7 秒)、模型 75MB、只用 CPU、結構上不會改字或答非所問。在 App 行程內用 sherpa-onnx 跑,辨識完直接補,不再經過 AI 潤稿。模型內建進 App、不加開關(辨識結果有中文字、沒有句號才補)。Breeze2 要不要留著備用,之後再決定。見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
+- **2026-10-22 其他設定用 VoiceInk 內建的匯出、匯入帶到另一台 Mac。** 「設定 → Export Settings」會帶模式(語音模型、語言、AI 潤稿、文字格式化)、快捷鍵、Word Replacements、詞彙表,不含 API key、中文提示詞和模型;所以只有中文提示詞寫進 App,其他不另外寫預設值。
 
 ## 目前進度
 
