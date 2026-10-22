@@ -58,30 +58,43 @@ def read_events(args):
 
 
 def group_dictations(events):
+    """每次開始辨識算一次聽寫。
+
+    - 錄音開始 = 之前最近一次顯示錄音面板。螢幕變動時重新擺放面板也會記一次「Showed」,不算。
+    - 準備模型(*-prepare)發生在錄音開始時,算下一次聽寫的;補標點和貼上算目前這次的。
+    - 沒講話的錄音只有辨識、沒有補標點和貼上,照樣一行。
+    """
     dictations = []
     current = None
+    upcoming = {}
+    previous_recorder_message = ""
     for stamp, category, message in events:
-        if category == "RecorderUIManager" and message.startswith("Showed recorder panel"):
-            if current is None or "asr_start" in current:
-                current = {"rec_start": stamp}
-                dictations.append(current)
-            continue
-        if current is None:
+        if category == "RecorderUIManager":
+            if message.startswith("Showed recorder panel") and not previous_recorder_message.startswith("Repositioning"):
+                upcoming = {"rec_start": stamp}
+            previous_recorder_message = message
             continue
         if message.startswith("Initiating local transcription"):
-            current["asr_start"] = stamp
-        elif message.startswith("Whisper transcription completed"):
-            current["asr_end"] = stamp
-        elif category == "CursorPaster" and message.startswith("Paste id="):
-            current.setdefault("paste", stamp)
+            current = {"rec_start": None, **upcoming, "asr_start": stamp}
+            upcoming = {}
+            dictations.append(current)
         elif category == "ZhTWTiming":
             name = message.split(" ", 1)[0]
+            target = upcoming if name.endswith("-prepare") else current
+            if target is None:
+                continue
             values = dict(FIELDS.findall(message))
             values["_at"] = stamp
-            current[name] = values
+            target[name] = values
             # 長的逐字稿分段補標點,每段各一筆
-            current.setdefault(name + "[]", []).append(values)
-    return [d for d in dictations if "asr_start" in d]
+            target.setdefault(name + "[]", []).append(values)
+        elif current is None:
+            continue
+        elif message.startswith("Whisper transcription completed"):
+            current.setdefault("asr_end", stamp)
+        elif category == "CursorPaster" and message.startswith("Paste id="):
+            current.setdefault("paste", stamp)
+    return dictations
 
 
 def read_load(path):
@@ -186,10 +199,11 @@ def main():
         total_engine = number(engine, "total")
         other = total_engine - sum(known) if total_engine is not None and None not in known else None
 
+        started = d["rec_start"] or d["asr_start"]
         row = [
-            d["rec_start"].strftime("%H:%M:%S").ljust(8),
+            started.strftime("%H:%M:%S").ljust(8),
             fmt(seconds(d["rec_start"], d.get("asr_start"))),
-            fmt(seconds(previous_paste, d["rec_start"]), 5) if previous_paste else fmt(None),
+            fmt(seconds(previous_paste, started), 5) if previous_paste else fmt(None),
             fmt(seconds(d.get("asr_start"), d.get("asr_end"))),
             fmt(seconds(d.get("asr_end"), requested_at)),
             fmt(str(client.get("_chunks", "-"))),
@@ -218,7 +232,7 @@ def main():
         print("\n模型重新載入:")
         for d in prepares:
             p = d["engine-prepare"]
-            print(f"  {d['rec_start']:%H:%M:%S}  load={p.get('load')}  warmup={p.get('warmup')}  qos={p.get('qos')}")
+            print(f"  {d['rec_start'] or d['asr_start']:%H:%M:%S}  load={p.get('load')}  warmup={p.get('warmup')}  qos={p.get('qos')}")
 
 
 if __name__ == "__main__":

@@ -86,5 +86,5 @@ VoiceInk.app
 ## 目前進度
 
 - v2 完成並在 M1 Pro 32GB 上使用中。
-- 進行中:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。A、B、C 都做完;等使用者的補標點盲測(Breeze2 vs CT-Transformer)決定要不要換補標點模型。結果會影響下面的 App 內下載,所以它先暫停。
+- 進行中:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。A、B、C 都做完。使用者盲測 CT-Transformer 8 題較好、Breeze2 3 題、差不多 4 題,建議換成 CT-Transformer int8,等使用者決定。結果會影響下面的 App 內下載,所以它先暫停。
 - 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。
