@@ -208,3 +208,4 @@ TEA 的繁體是「換 tokenizer 的顯示文字」做出來的(model card 說�
 - 2026-10-22 寫 plan。查證:Qwen3-ASR 技術報告、TEA model card(`bda08df7`)、`qwen-asr` 0.0.6 原始碼、transcribe.cpp `856d7c10`..`db678a03`(2026-10-20 的 `main`)、Beingpax/Transcribe-cpp-swift、VoiceInk 的詞彙表程式碼;TEA tokenizer 的檢查用 Python 照 merges 模擬編碼。沒有跑任何辨識。
 - 2026-10-22 使用者覺得校對 100 段太花時間。改成只判斷兩版不同的地方:我先看文字判斷,要聽錄音的才給使用者(見「做法」)。假設和通過標準跟著改成以差異處計算(還沒跑任何量測)。
 - 2026-10-22 使用者同意後,把 218 段聽寫的紀錄(`history.json`)和 127 段新錄音複製到私人 repo `2026-10-22-tea-vocabulary/`(另外 91 段原本就在 `2026-10-21-latency/`)。沒複製會議錄音和「重新辨識」產生的 2 段副本。
+- 2026-10-22 詞彙表定案:52 個詞(看前後文判斷被聽錯的 22 個、工作上常講的 21 個、這個 fork 常用的 9 個),大清單再加 78 個沒出現在這批錄音的技術名詞當干擾。清單有工作上的系統名稱和帳號,只放私人 repo(`2026-10-22-tea-vocabulary/terms.txt`、`terms-large.txt`),這裡只記數量。
