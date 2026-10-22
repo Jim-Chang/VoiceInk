@@ -147,3 +147,4 @@ scripts/setup.sh check        # 安裝狀態
   - `ZhTWPunctuation` 只留合併和 CT 的輸入規則,測試拿掉分段的 3 個案例(27/27 通過)。`scripts/bench/` 刪掉 `refine-bench.sh` 和 `RefineBench/`;`timing_report.py` 拿掉 Breeze2 的欄位(pre 到 xpc、therm、qos)。
   - `setup.sh` 不再下載 Breeze2、不再要求 16GB(只提示「只在 32GB 測過」);Breeze-ASR-25 還是可以用 `--with-breeze` 下載。
   - 使用者另外要求預設模式改名「繁中聽寫(TEA-ASR 1.1)」(原本叫「Breeze」),`configure_voiceink.py` 寫入、`setup.sh check` 檢查。
+  - 使用者實測拆掉後的版本(3 句,7–56 字):每句開始錄音時載入 TEA(0.89–0.99 秒)和 CT(0.10–0.15 秒),補標點 2–13 毫秒、貼上後釋放;放開快捷鍵到貼上 0.53–1.09 秒;紀錄裡沒有 AI 潤稿的結果、標點後面沒有空格;Refine 的 XPC 程序沒有啟動。
