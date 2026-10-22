@@ -78,6 +78,11 @@ class AudioTranscriptionManager: ObservableObject {
 
         processingTask = Task { [weak self] in
             guard let self else { return }
+            // voiceink-zhtw：轉檔期間不讓 macOS 把 App 降速（App Nap）。VoiceInk 被蓋在別的視窗後面時，
+            // 1 小時 43 分的會議錄音辨識 211 → 268 秒、補標點 5 → 21 秒（docs/plan/2026-10-23-tea-batch.md）
+            let activity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiated, reason: "Transcribing audio files")
+            defer { ProcessInfo.processInfo.endActivity(activity) }
 
             while let item = self.nextPendingItem() {
                 guard !Task.isCancelled else { break }

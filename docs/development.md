@@ -20,7 +20,7 @@ git push origin zhtw
 - 會衝突的地方:
   - `README.md`:一律保留我們的(`git checkout --ours README.md`)。
   - 改過的上游檔案(清單見 [architecture/README.md](architecture/README.md#修改了原作者的哪些檔案)):手動合併。特別注意:
-    - 三個辨識流程(`TranscriptionPipeline`、`AudioFileTranscriptionManager`、`AudioFileTranscriptionService`)在去掉頭尾空白之後呼叫 `ZhTWTranscript.clean` 和 `ZhTWPunctuator.punctuate`;上游改了這段流程,要確認呼叫還在、順序還是在段落格式化和 Word Replacements 之前。
+    - 三個辨識流程(`TranscriptionPipeline`、`AudioFileTranscriptionManager`、`AudioFileTranscriptionService`)在去掉頭尾空白之後呼叫 `ZhTWTranscript.clean` 和 `ZhTWPunctuator.punctuate`;上游改了這段流程,要確認呼叫還在、順序還是在段落格式化和 Word Replacements 之前。`AudioFileTranscriptionManager.startProcessing` 另外包了 `ProcessInfo.beginActivity`(轉檔期間不被 App Nap 降速)。
     - `VoiceInkEngine` 開始錄音時的 `ZhTWPunctuator.preload()` 和 `cleanupResources` 裡的 `unload()`。
     - `project.pbxproj`:sherpa-onnx 的兩個 dylib、CT 模型和搜尋路徑(ID 都以 `E1C7F001` 開頭),和 whisper.xcframework 的設定放在一起;衝突時保留兩邊。
   - 初始設定的 6 個檔案(清單見架構文件):「模型」那一步的本機模型換成 TEA,主要是把 `FluidAudioModel`、`FluidAudioModelManager`、`FluidAudioDownloadStatus` 換成 transcribe.cpp 的型別。上游改了初始設定時,確認「Local」還是 TEA、下載得動。
