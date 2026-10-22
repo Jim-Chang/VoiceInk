@@ -49,7 +49,8 @@ VoiceInk.app
 |---|---|---|
 | VoiceInk.app | `/Applications/VoiceInk.app` | 這個 fork 的 `zhtw` 分支自己 build |
 | whisper.cpp 函式庫 | `~/VoiceInk-Dependencies/` | build 用,Xcode 專案寫死這個路徑,**別刪** |
-| 語音辨識模型 | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/WhisperModels/ggml-breeze-asr-25-q8_0.bin` | [Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25) 的 whisper.cpp 轉檔(1.7GB) |
+| 語音辨識模型 | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/WhisperModels/ggml-breeze-asr-25-q8_0.bin` | [Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25) 的 whisper.cpp 轉檔(1.7GB);換成 TEA 後當備用 |
+| 語音辨識模型(換成 TEA 後) | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/TranscribeCpp/tea-asr-1.1/TEA-ASR-1.1-Q8_0.gguf` | [TEA-ASR-1.1](https://huggingface.co/JacobLinCool/TEA-ASR-1.1) 自己轉的 transcribe.cpp GGUF(2.18GB),旁邊的 `.TEA-ASR-1.1-Q8_0.gguf.sha256` 讓 App 當成已安裝 |
 | 補標點模型 | `~/Library/Application Support/com.prakashjoshipax.VoiceInk/ZhTWPunctuation/Llama-Breeze2-3B-Instruct-Text-mlx-4Bit/` | [Breeze2-3B](https://huggingface.co/MediaTek-Research/Llama-Breeze2-3B-Instruct) 的 MLX 4bit 轉檔(2GB);資料夾存在時 VoiceInk Refine 就改用它 |
 | 設定 | UserDefaults 網域 `com.prakashjoshipax.VoiceInk` | 由 `scripts/setup.sh configure` 寫入 |
 
@@ -64,6 +65,10 @@ VoiceInk.app
 | `VoiceInk/Features/ZhTW/ZhTWTiming.swift`、`VoiceInkRefineXPC/ZhTWTiming.swift`(新增) | 延遲調查的計時紀錄(只記時間和數量) |
 | `VoiceInkRefineXPC/VoiceInkRefineXPCService.swift` | 計時紀錄 |
 | `VoiceInk/Infrastructure/Providers/Transcription/Whisper/WhisperPrompt.swift` | 中文提示詞的預設值改成繁體 |
+| `VoiceInk/Features/ZhTW/ZhTWTranscript.swift`、`ZhTWSimplifiedOnly.swift`(新增) | 辨識完、補標點前整理:刪私用區字元、簡體專用字轉繁體、TEA 的零星標點拿掉;對照表由 `scripts/gen-zhtw-simplified.py` 產生 |
+| `TranscriptionPipeline.swift`、`AudioFileTranscriptionManager.swift`、`AudioFileTranscriptionService.swift` | 補標點前先呼叫 `ZhTWTranscript.clean`;`TranscriptionPipeline` 另記辨識計時 |
+| `VoiceInk/Features/Recording/Workflows/VoiceInkEngine.swift` | 開始錄音時載入 transcribe.cpp 模型的計時 |
+| `TranscribeCppModelCatalog.swift`、`TranscriptionModelRegistry.swift`、`LanguageDictionary.swift` | 模型清單加 TEA-ASR-1.1(下載位置、大小、SHA256、每 30 秒切段;只給中文) |
 | `README.md` | 換成這個 fork 的說明 |
 
 ## 決策紀錄
@@ -93,6 +98,6 @@ VoiceInk.app
 - v2 完成並在 M1 Pro 32GB 上使用中。
 - 完成:延遲調查,見 [../investigations/2026-10-21-latency.md](../investigations/2026-10-21-latency.md)。
 - 完成:換語音辨識模型的調查,見 [../investigations/2026-10-22-asr-models.md](../investigations/2026-10-22-asr-models.md)。
-- 計畫中:語音辨識換成 TEA-ASR-1.1,見 [../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。GGUF 放哪等三件事待使用者決定。
+- 進行中:語音辨識換成 TEA-ASR-1.1,見 [../plan/2026-10-22-tea-asr.md](../plan/2026-10-22-tea-asr.md)。程式改好(步驟 2–4);GGUF 等上傳到 Hugging Face,還沒裝到 `/Applications`、還沒實際使用。
 - 進行中:補標點換成 CT-Transformer,見 [../plan/2026-10-22-ct-punctuation.md](../plan/2026-10-22-ct-punctuation.md)。
 - 暫停:模型改成在 App 介面下載、預設值寫進 App(省掉 `configure`)、打包成 zip 給其他 Mac 安裝(不需要 Xcode)。見 [../plan/2026-10-21-in-app-model-download.md](../plan/2026-10-21-in-app-model-download.md)。換完 CT 再接著做,步驟 b 拿掉。

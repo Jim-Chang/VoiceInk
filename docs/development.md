@@ -20,6 +20,7 @@ git push origin zhtw
 - 會衝突的地方:
   - `README.md`:一律保留我們的(`git checkout --ours README.md`)。
   - 改過的 4 個上游檔案(見 [architecture/README.md](architecture/README.md#修改了原作者的哪些檔案)):手動合併。特別注意 `VoiceInkRefineService`、`VoiceInkRefineInferenceEngine` 的介面有沒有變。
+  - 模型清單的三個檔案(`TranscribeCppModelCatalog`、`TranscriptionModelRegistry`、`LanguageDictionary`)各加了一筆 TEA-ASR-1.1,衝突時保留兩邊。上游換了 `Transcribe-cpp-swift` 的版本時,TEA 要重新驗證:GGUF 是用 `856d7c1` 的轉檔程式轉的,新版可能有 #165(依長度調整產生上限)、可以拿掉每 30 秒切段。
 - 合併後先跑 `scripts/test-punctuation.sh`,再實際聽寫一句確認紀錄的模型是 `VoiceInk Refine V1`。
 
 ## Build
@@ -44,7 +45,7 @@ git push origin zhtw
 
 ## 查延遲
 
-補標點的每一段時間都記在系統紀錄(category `ZhTWTiming`,只有時間和數量):
+語音辨識(`asr`、開始錄音時載入 transcribe.cpp 模型的 `asr-prepare`)和補標點的每一段時間都記在系統紀錄(category `ZhTWTiming`,只有時間和數量):
 
 ```bash
 python3 -I scripts/timing_report.py --last 1h       # 每次聽寫一行
@@ -63,13 +64,16 @@ python3 -I scripts/timing_report.py --last 1h --load load.tsv
 | `refine-bench.sh` | 編譯 App 裡同一份補標點引擎(`VoiceInkRefineInferenceEngine`、`ZhTWPunctuation`)成命令列工具,離線跑一批逐字稿;可切換 prefix cache / 原作者做法、整段 / 分段。第一次要編 MLX(數分鐘) |
 | `asr_bench.py` | 用 whisper-cli 以 VoiceInk 的參數跑一批錄音,比較 Breeze-ASR-25 各版本的速度和結果 |
 | `punct_ct.py`、`punct-tool.sh` | 專門的標點模型(CT-Transformer,sherpa-onnx)補標點,再用 App 的合併邏輯插回繁體原文 |
+| `punct-ct.sh` | 編譯 App 裡同一份 CT 補標點(`ZhTWPunctuator`)成命令列工具,離線跑一批逐字稿;列有 `model` 欄時先照 App 的流程跑 `ZhTWTranscript.clean` |
+| `asr_models_run.sh`、`tc_bench.c`、`asr_models.py`、`tea_prepare.py` | 換語音辨識模型的評測:用 transcribe.cpp 跑一批錄音、統計、盲測;`tea_prepare.py` 整理 TEA-ASR 的 tokenizer 再轉 GGUF(見 [investigations/2026-10-22-asr-models.md](investigations/2026-10-22-asr-models.md)) |
 | `sample_load.py` | 每 0.5 秒記 GPU、CPU 負載 |
 
 跑評測時不要同時聽寫,也不要同時跑兩個評測(互搶 GPU,時間會失真)。
 
 ## 測試
 
-- `scripts/test-punctuation.sh`:只編 `ZhTWPunctuation.swift` 加測試程式,跑 `scripts/fixtures/punctuation-cases.json`,不用 build App、不用模型。改合併邏輯時先加案例。
+- `scripts/test-punctuation.sh`:只編 `ZhTWPunctuation.swift`、`ZhTWTranscript.swift` 加測試程式,跑 `scripts/fixtures/punctuation-cases.json` 和辨識結果整理的案例,不用 build App、不用模型。改合併或整理邏輯時先加案例。
+- 簡體專用字對照表(`ZhTWSimplifiedOnly.swift`)由 `python3 -I scripts/gen-zhtw-simplified.py` 產生(OpenCC 固定在 1.1.7),不要手改。
 - **聽寫紀錄和錄音只留 3 天**(見架構文件的決策紀錄),要做實驗先複製到私人 repo。
 - 實際聽寫的結果在 `~/Library/Application Support/com.prakashjoshipax.VoiceInk/default.store`(SQLite,`ZTRANSCRIPTION` 表):`ZTEXT` 是辨識結果、`ZENHANCEDTEXT` 是補標點後、`ZAIENHANCEMENTMODELNAME`、`ZENHANCEMENTDURATION`、`ZTRANSCRIPTIONDURATION`。查詢指令見 [plan/2026-10-21-v2-single-app.md](plan/2026-10-21-v2-single-app.md#驗證)。
 - VoiceInk 的 log 不會留在系統紀錄裡(`log show` 查不到),要看時間就查上面的資料庫。
