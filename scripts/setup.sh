@@ -27,15 +27,6 @@ ASR_FILE="ggml-breeze-asr-25-q8_0.bin"
 ASR_URL="https://huggingface.co/shdennlin/breeze-asr-25-ggml/resolve/main/$ASR_FILE"
 ASR_SHA256="d4b187c40ffbf1f620734b77821e2ca8a97c8ecf5754d02b2a175069348cafcf"
 
-# 補標點：聯發科 Breeze2-3B（MLX 4bit，社群轉檔），由 VoiceInk Refine 的引擎執行
-LLM_DIR="$APP_SUPPORT/ZhTWPunctuation/Llama-Breeze2-3B-Instruct-Text-mlx-4Bit"
-LLM_REPO="MXLouis/Llama-Breeze2-3B-Instruct-Text-mlx-4Bit"
-LLM_REVISION="acaf955132f32bad52549274be74612028601d01"
-LLM_FILES=(config.json generation_config.json chat_template.jinja special_tokens_map.json
-           tokenizer_config.json tokenizer.json model.safetensors.index.json model.safetensors)
-LLM_SHA256_MODEL="0df793d7dce10428d3e70e8ed8b40c1a944fa38c7b86f44a27a3d8d3f80fce92"
-LLM_SHA256_TOKENIZER="a8f58896d94c1728235bcfee5694a7c62c6666fdfb6b9b6810a3f839bc4e72f8"
-
 ok()   { echo "  ✓ $*"; }
 todo() { echo "  ✗ $*"; }
 step() { echo; echo "==> $*"; }
@@ -51,19 +42,18 @@ has_tea()       {
     [[ -f "$TEA_DIR/$TEA_FILE" && "$(stat -f %z "$TEA_DIR/$TEA_FILE")" == "$TEA_SIZE" ]] &&
         [[ "$(tr -d '[:space:]' < "$TEA_DIR/.$TEA_FILE.sha256" 2>/dev/null)" == "$TEA_SHA256" ]]
 }
-has_llm()       { [[ -f "$LLM_DIR/model.safetensors" && -f "$LLM_DIR/tokenizer.json" && -f "$LLM_DIR/config.json" ]]; }
 configured()    {
     defaults export com.prakashjoshipax.VoiceInk - 2>/dev/null | /usr/bin/python3 -c '
 import plistlib, json, sys
 p = plistlib.loads(sys.stdin.buffer.read())
 m = next(x for x in json.loads(p["modeConfigurationsV2"]) if x.get("isDefault"))
-sys.exit(0 if m.get("selectedTranscriptionModelName") == "tea-asr-1.1" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") and not m.get("isTextFormattingEnabled") and p.get("IsTranscriptionCleanupEnabled") and p.get("TranscriptionRetentionMinutes") == 4320 and p.get("IsAutoLearnDictionaryEnabled") is False else 1)' 2>/dev/null
+sys.exit(0 if m.get("name") == "繁中聽寫（TEA-ASR 1.1）" and m.get("selectedTranscriptionModelName") == "tea-asr-1.1" and m.get("selectedLanguage") == "zh" and not m.get("isAIEnhancementEnabled") and not m.get("isTextFormattingEnabled") and p.get("IsTranscriptionCleanupEnabled") and p.get("TranscriptionRetentionMinutes") == 4320 and p.get("IsAutoLearnDictionaryEnabled") is False else 1)' 2>/dev/null
 }
 
 check() {
     step "目前狀態"
     if [[ "$(uname -m)" == arm64 ]]; then ok "Apple Silicon"; else todo "不是 Apple Silicon"; fi
-    if (( $(memory_gb) >= 16 )); then ok "記憶體 $(memory_gb)GB"; else todo "記憶體 $(memory_gb)GB（VoiceInk Refine 需要 16GB 以上）"; fi
+    if (( $(memory_gb) >= 16 )); then ok "記憶體 $(memory_gb)GB"; else echo "  - 記憶體 $(memory_gb)GB（只在 32GB 測過；聽寫時約用 3.7GB）"; fi
     if has_xcode; then ok "Xcode"; else todo "Xcode（請從 App Store 安裝並打開一次）"; fi
     if has_metal; then ok "Metal 工具鏈"; else todo "Metal 工具鏈"; fi
     if command -v cmake > /dev/null; then ok "cmake"; else todo "cmake"; fi
@@ -73,28 +63,11 @@ check() {
     else todo "VoiceInk.app"; fi
     if has_tea; then ok "語音辨識模型 TEA-ASR-1.1"; else todo "語音辨識模型 TEA-ASR-1.1"; fi
     if has_asr; then ok "備用語音辨識模型 $ASR_FILE"; else echo "  - 備用語音辨識模型 Breeze-ASR-25 沒裝（選用：scripts/setup.sh --with-breeze）"; fi
-    if has_llm; then ok "補標點模型 Breeze2-3B"; else todo "補標點模型 Breeze2-3B"; fi
     if configured; then ok "VoiceInk 設定"; else todo "VoiceInk 設定（scripts/setup.sh configure）"; fi
-}
-
-download_llm() {
-    mkdir -p "$LLM_DIR"
-    for f in "${LLM_FILES[@]}"; do
-        [[ -f "$LLM_DIR/$f" ]] && continue
-        echo "  下載 $f"
-        curl -L --fail -C - -o "$LLM_DIR/$f.part" "https://huggingface.co/$LLM_REPO/resolve/$LLM_REVISION/$f"
-        mv "$LLM_DIR/$f.part" "$LLM_DIR/$f"
-    done
-    (cd "$LLM_DIR" && shasum -a 256 -c - <<EOF
-$LLM_SHA256_MODEL  model.safetensors
-$LLM_SHA256_TOKENIZER  tokenizer.json
-EOF
-    )
 }
 
 install_all() {
     [[ "$(uname -m)" == arm64 ]] || { echo "需要 Apple Silicon Mac"; exit 1; }
-    (( $(memory_gb) >= 16 )) || { echo "VoiceInk Refine 需要 16GB 以上記憶體"; exit 1; }
 
     step "Xcode 和編譯工具"
     has_xcode || { echo "請先從 App Store 安裝 Xcode，打開一次同意授權，再重跑這個腳本。"; exit 1; }
@@ -135,10 +108,6 @@ install_all() {
         fi
         ok "$ASR_DIR/$ASR_FILE"
     fi
-
-    step "補標點模型（Breeze2-3B，2GB）"
-    has_llm || download_llm
-    ok "$LLM_DIR"
 
     step "還需要你手動做的事"
     cat <<EOF
