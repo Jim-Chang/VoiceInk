@@ -243,8 +243,8 @@ TEA 的繁體是「換 tokenizer 的顯示文字」做出來的(model card 說�
 
 ## 待使用者決定
 
-1. **套件放哪**:自己的鏡像 repo(建議)、fork 裡的本機套件、或等原作者。改 App 前決定就好,量測不需要。
-2. **詞彙表內容**:我整理草稿,使用者增刪後固定。
+1. **套件放哪**:2026-10-22 使用者選自己的鏡像 repo,已建好(見紀錄)。
+2. **詞彙表內容**:2026-10-22 定案(見紀錄);量測後不採用詞彙表。
 
 ## 紀錄
 
@@ -254,3 +254,4 @@ TEA 的繁體是「換 tokenizer 的顯示文字」做出來的(model card 說�
 - 2026-10-22 詞彙表定案:52 個詞(看前後文判斷被聽錯的 22 個、工作上常講的 21 個、這個 fork 常用的 9 個),大清單再加 78 個沒出現在這批錄音的技術名詞當干擾。清單有工作上的系統名稱和帳號,只放私人 repo(`2026-10-22-tea-vocabulary/terms.txt`、`terms-large.txt`),這裡只記數量。
 - 2026-10-22 步驟 2 的工具完成:`tc_bench.c` 加 `--vocabulary-file`、`--prompt`(編譯時加 `-DTC_PROMPTING`);`tea_vocab_run.sh` 依序跑 A、B、C、C2 兩輪;`tea_vocab_diff.py` 產生清單、整理文字(接 `punct-ct.sh`,App 同一份 `ZhTWTranscript.clean`)、找差異、統計。上游 v0.4.0 的 `TranscribeCpp.xcframework.zip` 下載後 SHA256 和 GitHub 的 digest 相同;兩個版本各連結一份 `tc_bench`。用評測留下的 91 段 TEA 結果故意改 3 處自我測試:3 處都抓到、涉及清單詞的 2 處、「一段多 3 個清單詞」1 段,和預期相同。還沒用 GPU 跑任何辨識。估計一輪 4 組約 11 分鐘(218 段共 34.8 分鐘,評測時 TEA 跑 16 分鐘的錄音花 64 秒),兩輪約 25 分鐘。
 - 2026-10-22 步驟 3、4:兩輪跑完(17:05–17:30),結果見「結果」。只升級沒有差別;加詞彙表修好 16 處清單詞,但和清單詞無關的地方變壞 34、變好 23,短句多 92 毫秒,假設 2–5 不成立,建議不採用,改用 Word Replacements。使用者聽錄音的判斷沒做(不影響結論)。
+- 2026-10-22 使用者決定只升級 transcribe.cpp,升級後的套件照原作者的做法自己做一份可安裝的副本:公開 repo [Jim-Chang/Transcribe-cpp-swift](https://github.com/Jim-Chang/Transcribe-cpp-swift),tag `0.4.0`(commit `90169959`)。內容是上游 v0.4.0 的 `bindings/swift` 原始碼、測試和授權檔(31 個檔案,和上游逐位元組相同),`Package.swift` 的 binaryTarget 指向上游 release 的 `TranscribeCpp.xcframework.zip`(checksum `3da069d2…0453`,就是量測用的那份),`UPSTREAM.md` 記來源。本機驗證:套件編譯、不需要模型的 19 個測試通過(55 個要模型的略過);照 `OfflineTranscribeCppService` 的用法寫的小程式(`try` capabilities、`vocabulary`、`isTruncated`)編譯成功;從 GitHub 網址重新安裝也成功,執行時 Swift 和原生程式都是 0.4.0。套件名稱(identity)和原作者的一樣是 `transcribe-cpp-swift`,VoiceInk 只要改網址、版本和 `Package.resolved` 那一筆。App 這邊的修改交給主對話,和長音檔計畫步驟 1 一起做。
