@@ -1,0 +1,139 @@
+# 長音檔:語音偵測切段,辨識卡住時的保險
+
+2026-10-22。使用者用 VoiceInk 的「Transcribe Audio」轉一段 1 小時 43 分的會議錄音(私人資料,不放進任何 repo),TEA-ASR 轉了約 4 分半後整個失敗。討論後使用者決定:正確的流程是先用語音偵測切段、再送進語音辨識,辨識時每一段都要有保險;動手時先做保險、再做語音偵測。這份只寫計畫,實作交給主對話。
+
+## 發生了什麼
+
+- 錯誤:`TranscribeError.outputTruncated`(「decode hit the context/generation cap before end-of-stream」)。
+- 原因:某一段(最多 30 秒)讓模型「鬼打牆」,同一個短句重複約 200 次,直到碰到這版 transcribe.cpp 每次最多產生 256 個 token 的上限。只看了統計(最常見的 8 字片段出現 213 次),沒看內容。是哪一段、什麼聲音(靜音、音樂、笑聲、多人同時講話、雜音)還不知道。
+- 這是 Whisper 這類「一個字一個字往下猜」的模型出了名的毛病:聲音裡能聽的內容很少時,模型會照自己剛說過的話接下去。
+- 一段出錯,`OfflineTranscribeCppService` 的辨識迴圈就把錯誤往外丟,整個檔案失敗,前面轉好的也一起丟掉。這是原作者的寫法。聽寫走同一個迴圈,很長的聽寫中間有一段卡住也會整句失敗。
+- 附帶發現:這個錯誤由原作者的 `AudioTranscriptionManager` 寫進系統紀錄,**連同卡住那段的辨識文字**,而且是公開層級。我們自己的計時紀錄只記時間和數量。步驟 1 之後這種錯誤不會再往外丟,但其他錯誤還是會照原作者的方式記。
+
+## 目標
+
+```
+音檔
+ ↓
+① 語音偵測切段:找出有人講話的部分,在停頓處切開,丟掉靜音,每段 ≤ 30 秒
+ ↓
+② 每段送進 TEA 辨識,每段都有三項保險
+ ↓
+③ 接起來 → 整理(ZhTWTranscript.clean)→ 補標點 → 輸出
+```
+
+三項保險:
+
+1. 一段出錯不拖垮整個檔案(只針對「碰到上限」;其他錯誤和取消照舊)。
+2. 碰到上限就把那段切成兩半,各重跑一次。
+3. 還是碰到上限,保留已經辨識出來的字,把結尾的重複縮成只剩一次,繼續下一段。
+
+結果:長檔案轉得完;聽寫的結果不變差;短句聽寫不變慢。
+
+## 非目標
+
+- 時間軸、講者分辨、字幕檔(SRT)、自動分段。
+- 邊講邊出字(見 [`../investigations/2026-10-22-streaming-preview.md`](../investigations/2026-10-22-streaming-preview.md))。
+- 更新 transcribe.cpp:新版有依長度調整產生上限(#165),但要自己編 xcframework(見 [TEA 計畫](2026-10-22-tea-asr.md)的非目標)。而且上限放寬也擋不住鬼打牆,只是晚一點停。
+- 換參數重跑(Whisper 官方的 temperature fallback):這版的 `RunOptions` 沒開放 temperature、repetition penalty,所以改成「換個切法重跑」。
+- 轉檔時同時聽寫會再載入一份 TEA(這次 VoiceInk 佔了約 5.5GB):另外處理。
+
+## 業界做法對照
+
+| 做法 | 業界 | 這份計畫 |
+|---|---|---|
+| 先用語音偵測(VAD)切段,只送有人講話的部分 | 長檔案的標準做法(faster-whisper 的 `vad_filter`、WhisperX) | 步驟 3 |
+| 一段出錯不影響其他段、保留已完成的部分 | 標準做法 | 步驟 1 |
+| 偵測到重複就換參數重跑 | Whisper 官方(壓縮率太高就提高 temperature 重跑) | 參數沒開放,改成切短重跑(步驟 1) |
+| 事後刪掉重複 | 補救做法 | 步驟 1,只用在碰到上限的那段 |
+
+## 設計
+
+### 步驟 1:辨識迴圈的保險(`OfflineTranscribeCppService`)
+
+現在:`energyAwareChunks` 每 30 秒切一段(在最後 3 秒找最安靜的地方切),逐段 `session.run`,任何錯誤都往外丟。
+
+改成每一段:
+
+1. `session.run` 丟出 `TranscribeError.outputTruncated` 時:
+   - 段長 ≥ 4 秒:在中間附近找最安靜的地方切成兩半(沿用 `energyAwareChunks`,上限設成原長度的一半多一點),兩半各跑一次。只切一層,不遞迴,避免一段卡住拖很久。
+   - 半段還是碰到上限,或段長 < 4 秒:取錯誤附帶的 `partial` 文字,用 `ZhTWTranscript.collapseTrailingRepetition` 縮掉結尾的重複,接上去。
+2. 其他錯誤、取消:照舊往外丟(那是模型或程式真的有問題)。
+3. 各段接起來時:前一段結尾和下一段開頭都是英文字母或數字的話,中間補一個空格,不然會變成「APIdeploy」。現在 30 秒切段就有這個問題,步驟 3 切得更細會更常遇到。
+4. 紀錄(只記時間和數量,不記文字),寫在 `ZhTWTiming`:
+   - 每次辨識一行 `asr-chunks chunks=N retried=K truncated=M`。
+   - 每個最後還是碰到上限的段一行 `asr-loop at=<開始秒數> length=<秒數> chars=<字數>`,方便回頭去聽那段。
+
+`collapseTrailingRepetition`(放在我們的 `VoiceInk/Features/ZhTW/ZhTWTranscript.swift`,只用在碰到上限的那段):
+
+- 找文字結尾連續重複 3 次以上的片段(1–40 字),只留一次;被上限切斷的最後半截也拿掉。
+- 例:「我們先看這個好我們先看這個好我們先看這個好我們先」→「我們先看這個好」。
+- 「對對對」這種正常說法不會進來(只處理碰到上限的段),測試還是加案例確保短重複不會被誤刪。
+- `scripts/test-punctuation.sh` 加案例:正常文字不變、只重複 2 次不動、3 次以上縮成一次、結尾半截、單一字重複(「的的的的…」)、空字串。例句自己編。
+
+改到原作者的檔案:`OfflineTranscribeCppService.swift`(迴圈、切半、接段)。
+
+### 步驟 3:語音偵測切段
+
+**用哪個語音偵測**
+
+| | whisper.cpp 的 Silero(建議) | FluidAudio 的 Silero |
+|---|---|---|
+| 模型 | `ggml-silero-v5.1.2.bin`(885KB),已經內建在 App 裡,`VADModelManager` 給路徑 | CoreML 版,第一次用時從 Hugging Face 下載(`FluidInference/silero-vad-coreml`) |
+| 新的 Mac | 不用下載 | 照新的初始設定(不下載 Parakeet)不會有,要另外下載 |
+| 呼叫方式 | C API:`whisper_vad_init_from_file_with_params`、`whisper_vad_segments_from_samples`;App 已經連結 whisper.framework | Swift:`VadManager.segmentSpeech` |
+| 原作者用在 | Whisper 模型 | Parakeet |
+
+**開關**:跟著原作者的「VAD」設定(`IsVADEnabled`,預設開,在模型設定面板),和 Whisper、Parakeet 一致。關掉就是現在的做法。
+
+**切段方式**
+
+1. 語音偵測找出講話的區間,區間前後各留一點邊(先用 200 毫秒,要調)。
+2. 把相鄰的區間併成一段,每段不超過 30 秒(TEA 的上限),優先在比較長的停頓處分開。併起來是為了讓模型有上下文,也少跑幾次。
+3. 單一區間超過 30 秒(一直講沒停):區間內照舊用 `energyAwareChunks` 切。
+4. 區間之外(靜音,多半也包括音樂)不送進模型。
+5. 語音偵測失敗:記一行紀錄,退回現在的做法(和 Parakeet 那邊一樣)。
+
+**參數起點**(要用實際錄音調):原作者 Whisper 路線用 threshold 0.50、最短講話 250 毫秒、最短靜音 100 毫秒、前後留 30 毫秒;FluidAudio 預設最短靜音 0.75 秒、最長講話 14 秒。我們要的是「在停頓處切段」,不是「濾掉零碎雜音」,所以最短靜音大概要 300–500 毫秒、留邊大一點,避免切掉句首句尾的輕聲。
+
+**放哪**:新檔 `VoiceInk/Infrastructure/Providers/Transcription/TranscribeCpp/TranscribeCppSpeechSegmenter.swift`(我們新增,不會和上游衝突)。`OfflineTranscribeCppService` 只改切段那一處的呼叫。
+
+**風險**
+
+- 小聲或離麥克風遠的人(會議常見)被當成靜音而漏字。要用實際錄音比對開關前後的字數和內容。
+- 短句聽寫多一點時間(語音偵測本身)。Silero 很快,但要量。
+- 音樂、雜音還是可能被當成講話,所以步驟 1 的保險要留著。
+
+## 步驟
+
+每一步單獨 commit、驗證後再做下一步。
+
+1. **保險**:`collapseTrailingRepetition` 和測試案例;辨識迴圈的處理、接段補空格;計時紀錄。build、裝到這台。
+2. **用那段會議錄音驗證步驟 1**:轉得完;記下總時間、段數、重跑幾段、最後碰到上限的段在幾分幾秒。請使用者去聽那幾段,看是靜音、音樂還是什麼。
+3. **語音偵測切段**:先在 `scripts/bench/` 寫一個命令列小工具,用 App 同一份切段程式跑實際錄音、調參數;再接進 App。
+4. **驗證步驟 3**:見「驗證」。
+5. **文件**:架構文件(改了哪些檔案、決策紀錄)、`development.md`(合併上游時 `OfflineTranscribeCppService` 要注意的地方)、README(轉錄音檔的用法和限制)。
+
+## 待使用者決定
+
+1. **語音偵測的開關**:跟著原作者的「VAD」設定走(建議,預設就是開),還是 TEA 一律開?
+2. **還是卡住的那段**:保留已辨識的字、刪掉重複(建議,重複前面常有真的內容),還是整段不要?要不要在文字裡標一個記號(例如「〔聽不清楚〕」)?記號也會出現在聽寫貼上的文字裡,所以建議不標,只記在紀錄。
+3. **短句聽寫要不要也用語音偵測**:一律用(按著快捷鍵想很久、中間長時間靜音也能避免鬼打牆),還是只在超過 30 秒時用(短句完全不變、零風險)?建議先一律用,看驗證結果決定;短句的結果或延遲變差就改成只用在長的。
+
+## 驗證
+
+```bash
+scripts/test-punctuation.sh                      # 刪重複的案例
+python3 -I scripts/timing_report.py --last 30m   # 聽寫的延遲
+```
+
+| 步驟 | 怎麼驗 |
+|---|---|
+| 1–2 | 1 小時 43 分的會議錄音轉得完;`asr-chunks`、`asr-loop` 紀錄有出現;沒卡住的短句聽寫,結果和改之前逐字相同 |
+| 3–4 | 會議錄音:語音偵測開、關各跑一次,比總時間、段數、碰到上限的段數、丟掉的音訊比例、字數;差異處抽幾段請使用者聽。聽寫:用私人 repo 裡換語音辨識模型評測(`2026-10-22-asr-models`)的錄音,比開、關的輸出,逐段看差異是變好還是變差;短句的延遲增加在 50 毫秒以內 |
+
+比對結果放私人 repo `voiceink-zhtw-data` 的新資料夾 `2026-10-22-long-audio-segmentation/`。那段會議錄音是使用者的私人資料,只在本機用,使用者同意之前不複製進任何 repo。
+
+## 紀錄
+
+- 2026-10-22 寫 plan(在另一個對話討論,實作交給主對話)。
