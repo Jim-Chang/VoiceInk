@@ -48,7 +48,7 @@ defaults write com.prakashjoshipax.VoiceInk ZhTWRefineKeepWarmSeconds -int 600
 - [docs/architecture/README.md](docs/architecture/README.md):目標、指導原則、架構、決策紀錄
 - [docs/development.md](docs/development.md):分支、合併上游、build、測試
 - [docs/investigations/](docs/investigations/):聽寫工具與模型比較、簡體的原因、補標點模型評測、單一 App 的可行性、在 App 裡下載模型、延遲
-- [docs/plan/](docs/plan/):v1(VoiceInk + LM Studio)、v2(單一 App)、在 App 裡下載模型與打包
+- [docs/plan/](docs/plan/):v1(VoiceInk + LM Studio)、v2(單一 App)、在 App 裡下載模型與打包、補標點換成 CT-Transformer
 
 ## 授權
 
