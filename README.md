@@ -4,7 +4,7 @@
 
 這是 [Beingpax/VoiceInk](https://github.com/Beingpax/VoiceInk)(開源的 macOS 聽寫 App,GPLv3)的 fork,我們的修改都在 `zhtw` 分支:
 
-- **語音辨識**:[TEA-ASR-1.1](https://huggingface.co/JacobLinCool/TEA-ASR-1.1)(以 Qwen3-ASR-1.7B 微調的台灣華語模型),原生繁體、台灣用詞、中英夾雜。用 VoiceInk 內建的 transcribe.cpp 執行,短句辨識約 0.2 秒(M1 Pro)。聯發科 [Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25) 可以留著當備用。
+- **語音辨識**:[TEA-ASR-1.1](https://huggingface.co/JacobLinCool/TEA-ASR-1.1)(以 Qwen3-ASR-1.7B 微調的台灣華語模型),原生繁體、台灣用詞、中英夾雜。用 VoiceInk 內建的 transcribe.cpp 執行,短句辨識約 0.2 秒(M1 Pro)。
 - **補標點**:[CT-Transformer](https://modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch)(FunASR 的中英文標點模型,int8 版跟著 App 一起裝),用 sherpa-onnx 在 App 裡以 CPU 執行,每段幾毫秒。**只把標點插回原文,一個字都不改。**
 - 兩個模型都是開始錄音時載入、聽寫結束就釋放,App 閒著時不佔記憶體。
 
@@ -12,7 +12,7 @@
 
 ## 安裝
 
-需求:Apple Silicon、16GB 以上記憶體、macOS 15 以上、Xcode(App Store 安裝並打開過一次)、Homebrew。
+需求:Apple Silicon、macOS 15 以上、Xcode(App Store 安裝並打開過一次)、Homebrew。記憶體建議 16GB 以上(聽寫時約用 3.7GB,只在 32GB 測過)。
 
 ```bash
 git clone -b zhtw https://github.com/Jim-Chang/VoiceInk.git ~/Documents/koding_work/VoiceInk
@@ -20,12 +20,12 @@ cd ~/Documents/koding_work/VoiceInk
 scripts/setup.sh
 ```
 
-`setup.sh` 會裝好 Metal 工具鏈、cmake,準備 sherpa-onnx 和補標點模型,build 並安裝 VoiceInk,下載語音辨識模型(全部固定版本、核對 SHA256)。做過的步驟會自動跳過。加 `--with-breeze` 會另外下載備用的 Breeze-ASR-25。
+`setup.sh` 會裝好 Metal 工具鏈、cmake,準備 sherpa-onnx 和補標點模型,build 並安裝 VoiceInk,下載語音辨識模型(全部固定版本、核對 SHA256)。做過的步驟會自動跳過。加 `--with-breeze` 會另外下載備用的語音辨識模型,聯發科的 [Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25)(選用)。
 
 接著:
 
 1. **打開 VoiceInk 完成初始設定**:允許麥克風、輔助使用權限;「模型」那一步選 Local 下載 Parakeet 過關(之後可刪);設定快捷鍵(建議右邊 Option + Hybrid)。
-2. 執行 `scripts/setup.sh configure` 寫入設定:預設模式用 TEA-ASR + 中文,AI 潤稿、文字格式化、自動學習關掉,聽寫紀錄和錄音保留 3 天。
+2. 執行 `scripts/setup.sh configure` 寫入設定:預設模式改名「繁中聽寫(TEA-ASR 1.1)」、用 TEA-ASR + 中文,AI 潤稿、文字格式化、自動學習關掉,聽寫紀錄和錄音保留 3 天。
 
 隨時可以用 `scripts/setup.sh check` 看狀態。
 
@@ -64,5 +64,4 @@ VoiceInk 和這個 fork 的修改都是 [GPLv3](LICENSE)。原作者的說明請
 | CT-Transformer 標點模型 | Apache 2.0(ModelScope 頁面);FunASR 模型授權要求註明來源、保留模型名稱 | 阿里巴巴 FunASR 的 [punc_ct-transformer_zh-cn-common-vocab272727-pytorch](https://modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch),sherpa-onnx 轉成的 `sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8` |
 | sherpa-onnx | Apache 2.0 | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) |
 | ONNX Runtime | MIT | [microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) |
-| Breeze-ASR-25(備用) | Apache 2.0 | [MediaTek-Research/Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25) |
-| Breeze2-3B(舊的補標點,已不使用) | Llama 3.2 Community License | [MediaTek-Research/Llama-Breeze2-3B-Instruct](https://huggingface.co/MediaTek-Research/Llama-Breeze2-3B-Instruct) |
+| Breeze-ASR-25(選用的備用) | Apache 2.0 | [MediaTek-Research/Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25) |

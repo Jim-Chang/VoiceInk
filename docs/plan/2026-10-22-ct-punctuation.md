@@ -85,14 +85,14 @@
 2. **`ZhTWPunctuator`,離線核對**:寫 actor。`scripts/bench/` 加一個小工具,編譯同一份 Swift 檔案,跑實驗 C 的 91 段,和 `C-ct-merged-int8.json` 逐字比對(預期 91 段全部相同)。順便量載入時間和常駐記憶體。
 3. **接進三個流程**:加判斷條件、載入失敗的通知、計時紀錄,`timing_report.py` 加新欄位。`configure_voiceink.py` 把模式的 AI 潤稿關掉(補標點已經不靠它)。
 4. **裝到這台、實際用**:跑 `configure`,聽寫短句和長句,看計時和紀錄。用幾天。
-5. **Breeze2 那條路:待使用者決定**(見下一節)。
+5. **Breeze2 那條路:拆掉**(使用者決定,見下一節)。
 6. **文件**:
    - 架構文件:架構圖、元件位置、改了哪些檔案、決策紀錄、進度。
    - `development.md`:合併上游時要注意 `project.pbxproj` 和三個流程檔案。
    - README:補標點模型的來源和授權。
    - App 內下載計畫:拿掉步驟 b;步驟 c 的預設模式不再開 AI 潤稿。
 
-## 待使用者決定:Breeze2 那條路要不要留著當備用
+## Breeze2 那條路要不要留著當備用(決定:拆掉)
 
 | | 拆掉(建議) | 留著當備用 |
 |---|---|---|
@@ -142,3 +142,8 @@ scripts/setup.sh check        # 安裝狀態
 - 2026-10-22 實測發現句號後面多一個空格(「了解。␣所以…」):模式開著「文字格式化」,`ParagraphFormatter` 用空格接句子。以前它拿到的是沒標點的文字,所以沒作用。使用者選擇把它關掉(另一個選項是改成適合中文、保留自動分段,要改原作者的程式);`configure_voiceink.py` 加上 `isTextFormattingEnabled: false`,`setup.sh check` 也檢查。這台已經套用。
 - 2026-10-22 使用者實測(TEA 換上之前的 build `f5b7cd6`):7 句聽寫每次開始錄音都載入(0.08–0.14 秒)、結束都釋放;補標點 2–14 毫秒;短句放開快捷鍵到貼上 1.41–1.64 秒;句號後面沒有空格;只講英文的「git status」沒有補(貼出來的「GET status.」是語音辨識自己的輸出)。取消錄音沒有測到。
 - 2026-10-22 步驟 6 完成:架構文件(架構圖、元件位置、改了哪些檔案、進度)、`development.md`(合併上游要注意的地方)、README(模型和函式庫的來源與授權)一起改成 TEA + CT 的現況。App 內下載計畫在使用者決定只內建中文提示詞時已經記過。剩下步驟 5(Breeze2 補標點那條路要不要拆)待使用者決定;拆的話 `setup.sh` 也不再下載 Breeze2(現在還會下載 2GB,但沒用到)、不再要求 16GB。
+- 2026-10-22 步驟 5 完成:使用者決定拆掉,也刪掉這台的兩個 Breeze 模型(補標點的 Breeze2 2GB、備用語音辨識的 Breeze-ASR-25 1.7GB,移到垃圾桶由使用者清)。
+  - Refine 的 4 個檔案還原成原作者的版本(和合併基準 `22e5ec5` 相同),刪掉 XPC 那份 `ZhTWTiming.swift`;`git diff` 對原作者只剩 TEA、CT、繁體提示詞的改動。模型清單的 VoiceInk Refine 回到原作者的狀態(沒下載它的模型時顯示下載)。
+  - `ZhTWPunctuation` 只留合併和 CT 的輸入規則,測試拿掉分段的 3 個案例(27/27 通過)。`scripts/bench/` 刪掉 `refine-bench.sh` 和 `RefineBench/`;`timing_report.py` 拿掉 Breeze2 的欄位(pre 到 xpc、therm、qos)。
+  - `setup.sh` 不再下載 Breeze2、不再要求 16GB(只提示「只在 32GB 測過」);Breeze-ASR-25 還是可以用 `--with-breeze` 下載。
+  - 使用者另外要求預設模式改名「繁中聽寫(TEA-ASR 1.1)」(原本叫「Breeze」),`configure_voiceink.py` 寫入、`setup.sh check` 檢查。

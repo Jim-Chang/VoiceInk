@@ -23,7 +23,6 @@ git push origin zhtw
     - 三個辨識流程(`TranscriptionPipeline`、`AudioFileTranscriptionManager`、`AudioFileTranscriptionService`)在去掉頭尾空白之後呼叫 `ZhTWTranscript.clean` 和 `ZhTWPunctuator.punctuate`;上游改了這段流程,要確認呼叫還在、順序還是在段落格式化和 Word Replacements 之前。
     - `VoiceInkEngine` 開始錄音時的 `ZhTWPunctuator.preload()` 和 `cleanupResources` 裡的 `unload()`。
     - `project.pbxproj`:sherpa-onnx 的兩個 dylib、CT 模型和搜尋路徑(ID 都以 `E1C7F001` 開頭),和 whisper.xcframework 的設定放在一起;衝突時保留兩邊。
-    - `VoiceInkRefineService`、`VoiceInkRefineInferenceEngine`:Breeze2 補標點的舊改動,還沒拆掉前要注意介面有沒有變。
   - 模型清單的三個檔案(`TranscribeCppModelCatalog`、`TranscriptionModelRegistry`、`LanguageDictionary`)各加了一筆 TEA-ASR-1.1,衝突時保留兩邊。上游換了 `Transcribe-cpp-swift` 的版本時,TEA 要重新驗證:GGUF 是用 `856d7c1` 的轉檔程式轉的,新版可能有 #165(依長度調整產生上限)、可以拿掉每 30 秒切段。
 - 合併後先跑 `scripts/test-punctuation.sh`,再實際聽寫一句,用 `python3 -I scripts/timing_report.py --last 10m` 確認有補標點(`punct` 欄位)、語音辨識用的是 TEA。
 
@@ -45,7 +44,7 @@ git push origin zhtw
 
   產出在 `.local-build/Build/Products/Release/VoiceInk.app`,關掉 VoiceInk 後用 `ditto` 蓋掉 `/Applications/VoiceInk.app`。
 - **簽章**:鑰匙圈裡剛好一張 Apple Development 憑證時,`make local` 會自動用它。簽章固定,重新 build 後麥克風、輔助使用權限不用重給;沒有憑證時用 ad-hoc 簽章,每次 build 後可能要重給。
-- 新的 `.swift` 檔放在 `VoiceInk/` 底下會自動加進 App target(Xcode 的 synchronized group),不用改 `project.pbxproj`;`VoiceInkRefineXPC/` 是另一個 target,看不到 App 的檔案。
+- 新的 `.swift` 檔放在 `VoiceInk/` 底下會自動加進 App target(Xcode 的 synchronized group),不用改 `project.pbxproj`。
 
 ## 查延遲
 
@@ -65,7 +64,6 @@ python3 -I scripts/timing_report.py --last 1h --load load.tsv
 
 | 工具 | 用途 |
 |---|---|
-| `refine-bench.sh` | 編譯 App 裡同一份補標點引擎(`VoiceInkRefineInferenceEngine`、`ZhTWPunctuation`)成命令列工具,離線跑一批逐字稿;可切換 prefix cache / 原作者做法、整段 / 分段。第一次要編 MLX(數分鐘) |
 | `asr_bench.py` | 用 whisper-cli 以 VoiceInk 的參數跑一批錄音,比較 Breeze-ASR-25 各版本的速度和結果 |
 | `punct_ct.py`、`punct-tool.sh` | 專門的標點模型(CT-Transformer,sherpa-onnx)補標點,再用 App 的合併邏輯插回繁體原文 |
 | `punct-ct.sh` | 編譯 App 裡同一份 CT 補標點(`ZhTWPunctuator`)成命令列工具,離線跑一批逐字稿;列有 `model` 欄時先照 App 的流程跑 `ZhTWTranscript.clean` |
@@ -86,4 +84,4 @@ python3 -I scripts/timing_report.py --last 1h --load load.tsv
 
 - 設定存在 UserDefaults 網域 `com.prakashjoshipax.VoiceInk`。模式在 `modeConfigurationsV2`(JSON 的 Data)、中文 Whisper 提示詞在 `CustomLanguagePrompts`。
 - **一定要先關掉 VoiceInk 再寫**,不然它結束時會蓋回去。`scripts/setup.sh configure` 會自動關、備份(到 `~/Library/Application Support/com.prakashjoshipax.VoiceInk/zhtw-backups/`)、寫入、再打開。
-- 自己的設定值:`ZhTWRefineKeepWarmSeconds`(模型閒置多久卸載,預設 300)。
+- 自己的設定值:`ZhTWPunctuationEnabled`(設成 false 暫時關掉補標點,查問題用)。
